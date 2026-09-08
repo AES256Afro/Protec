@@ -38,7 +38,15 @@ async function refresh() {
   render();
 }
 $('login-form').addEventListener('submit', async event => {
-  event.preventDefault(); credential = $('token').value.trim();
+  event.preventDefault();
+  const token = $('token').value.trim();
+  if (!/^[A-Za-z0-9_-]{32,128}$/.test(token)) {
+    credential = '';
+    notify('Paste the token file contents, not the file path or masked dots. On your Mac, run the copy command shown above, then paste here.');
+    $('token').focus();
+    return;
+  }
+  credential = token;
   try { await refresh(); $('token').value=''; $('login').hidden=true; $('content').hidden=false; $('lock').hidden=false; $('enroll').disabled=false; notify(''); }
   catch(error) { credential=''; notify(error.message); }
 });

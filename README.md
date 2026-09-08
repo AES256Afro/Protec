@@ -4,15 +4,26 @@ A Linux-first endpoint management project, with Windows and macOS planned next. 
 
 **Version 0.1 is a runnable local inventory prototype.** It implements enrollment and device tracking. It does not yet enforce security policies, collect system logs, install patches, deploy configurations, or open remote sessions.
 
-## Run locally
+## Run locally on your MacBook or Linux
 
 Requires Python 3.11 or newer. No third-party packages are required.
 
 ```sh
+cd /Users/chris/Projects/Protec
 python3 -m protec.server
 ```
 
 Open http://127.0.0.1:8765. Paste the token from `.protec/admin-token` into the dashboard's connection form. The token is a local administrator credential: do not commit or share it. The dashboard keeps it in memory only.
+
+On this Mac, copy the administrator token without displaying it:
+
+```sh
+pbcopy < /Users/chris/Projects/Protec/.protec/admin-token
+```
+
+Paste into the dashboard and select **Connect**. Paste the actual token contents, not the file path or masked dots. Malformed input is rejected with guidance before sending a network request.
+
+Both the control plane and the inventory agent can run on your MacBook. No Linux machine or VM is needed to test enrollment, check-ins, inventory refresh, and revocation.
 
 1. Select **Enroll device** to create a single-use token valid for 15 minutes.
 2. In another terminal, from this checkout, run `python3 -m protec.agent --enroll`.
@@ -23,7 +34,7 @@ Open http://127.0.0.1:8765. Paste the token from `.protec/admin-token` into the 
 
 Subsequent runs use `python3 -m protec.agent`. Use `--once` for one check-in, and `--state PATH` for an alternative enrollment state file. Revocation keeps historical inventory and audit events. To re-enroll a revoked device, stop the agent, remove its local state file, and enroll using a new token.
 
-The inventory agent runs as the user who starts it and reports whether that user has administrator privileges. Root is not required for this slice. It does not install a service, elevate privileges, enable SSH, or alter the host. POSIX enrollment supports Linux and a macOS development smoke test. Windows enrollment is intentionally blocked until protected credential storage is implemented.
+The inventory agent runs as the user who starts it and reports whether that user has administrator privileges. Root is not required for this slice. It does not install a service, elevate privileges, enable SSH, or alter the host. POSIX enrollment supports Linux and local macOS inventory testing. macOS inventory uses its product name and version. The privilege field describes the running process: a normal Terminal session reports standard privileges even if your macOS account belongs to the administrators group. Windows enrollment is intentionally blocked until protected credential storage is implemented.
 
 The control plane binds only to loopback. This is for testing on a single host. Do not expose this prototype as a production service. The agent accepts HTTPS origins for future deployments, but reverse-proxy support and a hardened remote deployment have not been implemented or validated.
 
@@ -46,6 +57,7 @@ Connection status means a check-in was received within 90 seconds. It is not a s
 ```sh
 python3 -m unittest discover -s tests -v
 node --check static/app.js
+node --test tests/test_login.cjs
 ```
 
 Tests exercise concurrent token consumption, expiration, hashed credential storage, cross-device authorization, lease expiry, revocation, malformed inventory, browser-origin rejection, and a real HTTP agent-to-server inventory job round trip.
