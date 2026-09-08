@@ -4,3 +4,5 @@
 .package-list{max-height:360px;overflow:auto;margin:16px 0}.package-list .event{font-size:12px;overflow-wrap:anywhere}select{font:inherit;padding:10px;border:1px solid #d9e2dc;border-radius:6px;background:white;color:#243c2e}
 
 .access-form{padding:0 24px 24px;display:grid;grid-template-columns:1fr 1.5fr 130px auto;gap:14px;align-items:end}.access-form label{margin:0}.access-form input,.access-form select{display:block;width:100%;margin-top:8px}#identity-label{font-size:11px;color:#567561}#access-dialog textarea{width:100%;font-family:monospace}@media(max-width:1100px){.access-form{grid-template-columns:1fr 1fr}}@media(max-width:600px){.access-form{grid-template-columns:1fr}#identity-label{display:none}}
+
+.receipt-digest{overflow-wrap:anywhere}

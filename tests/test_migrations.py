@@ -27,7 +27,8 @@ class MigrationTests(unittest.TestCase):
         with patch('protec.server.migrate'):
             old = Store(self.path)
         device = old.enroll(old.enrollment()['token'],inventory())
-        old.queue(device['id'])
+        with old.connect() as db:
+            db.execute('INSERT INTO jobs VALUES (?,?,?,?,?,?,?)',('legacy-job',device['id'],'refresh_inventory','queued',1,0,None))
         copy_database(self.path,Path(self.temp.name)/'before.db')
         for _ in range(2):
             upgraded = Store(self.path)
@@ -67,7 +68,20 @@ class MigrationTests(unittest.TestCase):
             with upgraded.connect() as db:
                 row=db.execute('SELECT replacement_id,rotation_deadline FROM credentials').fetchone()
                 self.assertEqual(tuple(row),(None,None))
-                self.assertEqual(validate_schema(db),4)
+                self.assertEqual(validate_schema(db),SCHEMA_VERSION)
+
+    def test_schema_four_upgrade_preserves_legacy_running_jobs(self):
+        import protec.migrations as migrations
+        connection=self.legacy()
+        connection.execute(f'CREATE TABLE credentials ({CREDENTIAL_SCHEMA}, device_ids TEXT, replacement_id TEXT, rotation_deadline REAL)')
+        connection.execute('INSERT INTO jobs VALUES (?,?,?,?,?,?,?)',('j','d','refresh_inventory','running',1,9999999999,None))
+        connection.execute('PRAGMA user_version=4')
+        connection.commit();connection.close()
+        upgraded=Store(self.path)
+        with upgraded.connect() as db:
+            row=db.execute('SELECT status,lease,contract_version,attempt,receipt,lease_hash FROM jobs').fetchone()
+            self.assertEqual(tuple(row),('running',9999999999,0,0,None,None))
+            self.assertEqual(migrations.validate_schema(db),5)
 
     def test_future_database_refused_without_creating_tables(self):
         connection = sqlite3.connect(self.path)

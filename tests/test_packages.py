@@ -50,7 +50,7 @@ class PackageTests(unittest.TestCase):
             cycle(state)
             cycle(state)
             self.assertEqual(collector.call_count,1)
-            request.side_effect=[{'jobs':[{'id':'job','kind':'refresh_inventory'}]},{'jobs':[]},{'ok':True}]
+            request.side_effect=[{'jobs':[{'id':'a'*24,'kind':'refresh_inventory'}]},{'jobs':[]},{'ok':True}]
             cycle(state)
             self.assertEqual(collector.call_count,2)
             self.assertEqual(request.call_args.args[1],'/api/complete')

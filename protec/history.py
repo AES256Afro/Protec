@@ -1,12 +1,13 @@
 """Bounded, authenticated history projections. Credentials are never selected."""
 from protec.migrations import validate_schema
+from protec.jobs import PROJECTION as JOB_PROJECTION
 from protec.identity import device_filter, decode_scope
 import time
 
 PROJECTIONS = {
     'credentials':'id,name,role,created,expires,revoked,issued_by,device_ids,replacement_id,rotation_deadline',
     'audit':'id,time,actor,action,target',
-    'jobs':'id,device,kind,status,created,result',
+    'jobs':JOB_PROJECTION,
     'enrollments':'hash AS id,expires,used',
     'devices':'id,inventory,seen,revoked',
 }
@@ -44,6 +45,8 @@ def page(store,kind,limit=50,cursor=None,device_ids=None):
         row.pop('position')
         if kind=='devices':
             row['inventory']=json.loads(row['inventory'])
+        elif kind=='jobs':
+            row['receipt']=json.loads(row['receipt']) if row['receipt'] else None
         elif kind=='credentials':
             row['device_ids']=decode_scope(row['device_ids'])
             row['status']='revoked' if row.pop('revoked') else 'expired' if row['expires']<=now else 'rotating' if row['rotation_deadline'] is not None and row['rotation_deadline']>now else 'rotated' if row['rotation_deadline'] is not None else 'active'
