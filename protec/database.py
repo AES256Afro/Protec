@@ -4,19 +4,14 @@ import os
 from pathlib import Path
 import sqlite3
 import tempfile
-
-REQUIRED = {'devices','enrollments','jobs','audit'}
+from contextlib import closing
+from protec.migrations import validate_schema
 
 def validate(connection):
     result = connection.execute('PRAGMA integrity_check').fetchall()
     if result != [('ok',)]:
         raise ValueError('Database integrity check failed')
-    tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    if not REQUIRED.issubset(tables):
-        raise ValueError('Source is not a Protec database')
-    version = connection.execute('PRAGMA user_version').fetchone()[0]
-    if version > 1:
-        raise ValueError('Database version is newer than this Protec release')
+    return validate_schema(connection)
 
 def copy_database(source, destination):
     """Snapshot a live SQLite source, validate it, then atomically create destination."""
@@ -48,11 +43,19 @@ def copy_database(source, destination):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('operation',choices=['backup','restore'])
+    parser.add_argument('operation',choices=['backup','restore','check'])
     parser.add_argument('--source',type=Path,required=True)
-    parser.add_argument('--destination',type=Path,required=True)
+    parser.add_argument('--destination',type=Path)
     args = parser.parse_args()
     try:
+        if args.operation=='check':
+            source = args.source.resolve(strict=True)
+            with closing(sqlite3.connect(source.as_uri()+'?mode=ro',uri=True)) as connection:
+                schema = validate(connection)
+            print(f'Protec database integrity passed; schema version {schema}')
+            return
+        if args.destination is None:
+            parser.error('--destination is required for backup and restore')
         destination = copy_database(args.source,args.destination)
     except (OSError,ValueError,sqlite3.Error) as error:
         raise SystemExit(f'{args.operation.capitalize()} failed: {error}')

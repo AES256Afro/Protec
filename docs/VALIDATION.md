@@ -25,3 +25,9 @@ Not yet validated: a persistent Linux service, a separate remote Linux device, p
 - Eleven Python tests and two JavaScript regression tests passed locally.
 - Browser verified administrator login, metadata-only enrollment listing, and transition from active to revoked against a disposable local database.
 - API tests verify metadata authentication, revocation authentication, rejected enrollment after revocation, and unchanged credentials for previously enrolled devices.
+
+## Versioned schema migration
+
+- Nineteen Python tests passed, including repeatable legacy upgrade, refused future/incomplete schemas, and transaction rollback after a migration error.
+- A copy of the actual local database upgraded to version 1 with device records preserved. A separate pre-upgrade backup was created before restarting the live service.
+- The live database integrity/schema check passed after restart.
