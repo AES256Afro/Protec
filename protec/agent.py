@@ -16,7 +16,10 @@ def inventory():
     if os.name=='nt':
         import ctypes
         privileged = bool(ctypes.windll.shell32.IsUserAnAdmin())
-    return {'hostname':socket.gethostname(),'os':platform.system(),'version':platform.release(),
+    system = platform.system()
+    os_name = 'macOS' if system=='Darwin' else system
+    version = platform.mac_ver()[0] if system=='Darwin' else platform.release()
+    return {'hostname':socket.gethostname(),'os':os_name,'version':version,
             'architecture':platform.machine(),'agent_version':'0.1.0',
             'privilege':'administrator' if privileged else 'standard'}
 
@@ -62,7 +65,7 @@ def main():
             raise SystemExit('Windows enrollment requires a credential store/ACL implementation; this prototype enrolls POSIX hosts only')
         server = validate_server(args.server)
         args.state.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
-        token = getpass.getpass('Single-use enrollment token: ')
+        token = getpass.getpass('Single-use enrollment token: ').strip()
         state = request(server,'/api/enroll',token,{'inventory':inventory()})
         state['server'] = server
         with args.state.open('x') as file:

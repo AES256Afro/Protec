@@ -3,6 +3,7 @@ import json
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -62,6 +63,12 @@ class ControlPlaneTests(unittest.TestCase):
         self.store.queue(device['id'])
         with self.assertRaises(ValueError):
             self.store.queue(device['id'])
+    def test_macos_reports_product_version(self):
+        with patch('protec.agent.platform.system',return_value='Darwin'), patch('protec.agent.platform.mac_ver',return_value=('27.0', ('','',''), 'arm64')):
+            result = inventory()
+        self.assertEqual(result['os'],'macOS')
+        self.assertEqual(result['version'],'27.0')
+
     def test_remote_http_rejected(self):
         with self.assertRaises(ValueError):
             validate_server('http://example.com')
