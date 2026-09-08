@@ -50,7 +50,7 @@ The control plane binds only to loopback. This is for testing on a single host. 
 - Dashboard inventory search, connection counts, action status, and audit history.
 - Explicit empty states and capability availability. No seeded or fabricated device records.
 
-Connection status means a check-in was received within 90 seconds. It is not a security compliance verdict. Inventory and privilege data are agent-reported, not attested. The action and audit views show the latest 100 records; database history is retained. Pending action count includes all queued and running jobs.
+Connection status means a check-in was received within 90 seconds. It is not a security compliance verdict. Inventory and privilege data are agent-reported, not attested. The main device, action and audit views show the latest 100 records. The History view loads older device, job, token and audit records in pages; fleet counters cover the full database. Pending action count includes all queued and running jobs.
 
 ## Validation
 
@@ -71,3 +71,5 @@ This prototype uses Python's development HTTP server. It has one administrator i
 See [the delivery roadmap](docs/ROADMAP.md) for the next implementation slices and [architecture](docs/ARCHITECTURE.md) for management and privilege boundaries.
 
 Database snapshots and recovery instructions: [Backup and staged restore](docs/BACKUP_RESTORE.md).
+
+History, readiness checks and conservative retention: [Data operations](docs/DATA_OPERATIONS.md).

@@ -31,3 +31,8 @@ Not yet validated: a persistent Linux service, a separate remote Linux device, p
 - Nineteen Python tests passed, including repeatable legacy upgrade, refused future/incomplete schemas, and transaction rollback after a migration error.
 - A copy of the actual local database upgraded to version 1 with device records preserved. A separate pre-upgrade backup was created before restarting the live service.
 - The live database integrity/schema check passed after restart.
+
+## M2 history, readiness and retention
+
+- Twenty-five Python tests and two JavaScript tests passed locally. Retention tests preserve active jobs, device credentials and audit history, and refuse deletion if the backup fails. No live retention apply was performed.
+- Browser loaded 125 test audit records across pages of 50, 50 and 25, and disabled further paging. Readiness showed schema version and accurate record counts.

@@ -9,8 +9,9 @@ import secrets
 import sqlite3
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
 from protec.migrations import migrate
+from protec.history import page, health
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -105,13 +106,14 @@ class Store:
         return {'ok':True}
     def snapshot(self):
         with self.connect() as db:
-            devices = [dict(r) for r in db.execute('SELECT id,inventory,seen,revoked FROM devices ORDER BY seen DESC')]
+            devices = [dict(r) for r in db.execute('SELECT id,inventory,seen,revoked FROM devices ORDER BY rowid DESC LIMIT 100')]
             for device in devices:
                 device['inventory'] = json.loads(device['inventory'])
             jobs = [dict(r) for r in db.execute('SELECT id,device,kind,status,created,result FROM jobs ORDER BY created DESC LIMIT 100')]
+            fleet = dict(db.execute('SELECT count(*) AS records,coalesce(sum(revoked=0),0) AS active,coalesce(sum(revoked=0 AND seen>?),0) AS online FROM devices',(time.time()-90,)).fetchone())
             pending = db.execute("SELECT count(*) FROM jobs WHERE status IN ('queued','running')").fetchone()[0]
             audit = [dict(r) for r in db.execute('SELECT * FROM audit ORDER BY id DESC LIMIT 100')]
-        return {'devices':devices,'jobs':jobs,'audit':audit,'time':time.time(),'pending':pending}
+        return {'devices':devices,'jobs':jobs,'audit':audit,'time':time.time(),'pending':pending,'fleet':fleet}
 
 def inventory_input(body):
     inv = body.get('inventory')
@@ -150,7 +152,16 @@ class Handler(BaseHTTPRequestHandler):
             raise PermissionError('Administrator authentication required')
     def do_GET(self):
         try:
-            path = urlsplit(self.path).path
+            url = urlsplit(self.path)
+            path = url.path
+            if path=='/api/history':
+                self.admin()
+                query = parse_qs(url.query)
+                cursor = query.get('cursor',[None])[0]
+                return self.reply(200,page(self.server.store,query.get('kind',['audit'])[0],int(query.get('limit',['50'])[0]),int(cursor) if cursor is not None else None))
+            if path=='/api/health':
+                self.admin()
+                return self.reply(200,health(self.server.store,self.server.started))
             if path=='/api/enrollments':
                 self.admin()
                 return self.reply(200,{'enrollments':self.server.store.enrollment_list()})
@@ -164,6 +175,10 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(404,{'error':'Not found'})
         except PermissionError as e:
             self.reply(401,{'error':str(e)})
+        except ValueError as e:
+            self.reply(400,{'error':str(e)})
+        except (sqlite3.Error, OSError):
+            self.reply(503,{'error':'Control plane data is unavailable'})
     def do_POST(self):
         try:
             # Bearer-only requests, JSON, and no CORS permission protect browser writes.
@@ -208,6 +223,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def make_server(path, token, port=8765):
     server = ThreadingHTTPServer(('127.0.0.1',port),Handler)
+    server.started = time.monotonic()
     server.store = Store(path)
     server.admin_token = token
     return server
