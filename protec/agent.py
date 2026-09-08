@@ -10,6 +10,7 @@ import time
 from urllib.error import URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
+from protec.packages import collect as collect_packages
 
 def inventory():
     privileged = os.geteuid()==0 if hasattr(os,'geteuid') else False
@@ -42,11 +43,20 @@ def request(server,path,token,body):
         return json.load(response)
 
 def cycle(state):
-    response = request(state['server'],'/api/heartbeat',state['credential'],{'inventory':inventory()})
-    for job in response['jobs']:
-        if job['kind']!='refresh_inventory':
-            continue
-        # The current heartbeat delivered freshly collected inventory.
+    fresh = time.monotonic()-state.get('_package_scan',float('-inf'))>=300
+    if fresh:
+        state['_packages']=collect_packages()
+        state['_package_scan']=time.monotonic()
+    current=inventory()
+    current['packages']=state['_packages']
+    response = request(state['server'],'/api/heartbeat',state['credential'],{'inventory':current})
+    jobs=[job for job in response['jobs'] if job['kind']=='refresh_inventory']
+    if jobs and not fresh:
+        state['_packages']=collect_packages()
+        state['_package_scan']=time.monotonic()
+        current['packages']=state['_packages']
+        request(state['server'],'/api/heartbeat',state['credential'],{'inventory':current})
+    for job in jobs:
         request(state['server'],'/api/complete',state['credential'],{'job':job['id']})
     return len(response['jobs'])
 

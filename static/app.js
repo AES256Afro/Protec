@@ -25,7 +25,7 @@ function render() {
   $('device-rows').innerHTML = devices.map(d => {
     const inv = d.inventory;
     const connected = !d.revoked && snapshot.time - d.seen < 90;
-    return `<tr><td><strong>${escape(inv.hostname)}</strong><small>${escape(d.id)}</small></td><td><span class="badge ${connected?'green':''}">${d.revoked?'Revoked':connected?'Connected':'Offline'}</span></td><td>${escape(inv.os)}<small>${escape(inv.version)} · ${escape(inv.architecture)}</small></td><td>${escape(inv.privilege)}<small>Self-reported</small></td><td>${escape(date(d.seen))}</td><td>${d.revoked?'Access removed':`<button data-refresh="${escape(d.id)}">Refresh inventory</button><button data-revoke="${escape(d.id)}">Revoke</button>`}</td></tr>`;
+    return `<tr><td><strong>${escape(inv.hostname)}</strong><small>${escape(d.id)}</small></td><td><span class="badge ${connected?'green':''}">${d.revoked?'Revoked':connected?'Connected':'Offline'}</span></td><td>${escape(inv.os)}<small>${escape(inv.version)} · ${escape(inv.architecture)}</small></td><td>${escape(inv.privilege)}<small>Self-reported</small></td><td>${escape(date(d.seen))}</td><td>${d.revoked?'Access removed':`<button data-packages="${escape(d.id)}">Packages</button><button data-refresh="${escape(d.id)}">Refresh inventory</button><button data-revoke="${escape(d.id)}">Revoke</button>`}</td></tr>`;
   }).join('') || (snapshot.devices.length ? '<tr><td colspan="6">No devices match your search.</td></tr>' : '');
   $('job-list').innerHTML = snapshot.jobs.map(j => `<div class="event"><div><strong>Inventory refresh</strong><p>${escape(j.device)} · ${escape(j.result || 'Awaiting agent result')}</p></div><div><span class="badge ${j.status==='completed'?'green':''}">${escape(j.status)}</span><p>${escape(date(j.created))}</p></div></div>`).join('') || '<p>No device actions yet. Request an inventory refresh from Devices.</p>';
   $('audit-list').innerHTML = snapshot.audit.map(a => `<div class="event"><div><strong>${escape(a.action.replaceAll('.',' '))}</strong><p>${escape(a.actor)} → ${escape(a.target)}</p></div><small>${escape(date(a.time))}</small></div>`).join('') || '<p>No audit events yet. Enroll your first device to begin.</p>';
@@ -70,6 +70,7 @@ document.querySelectorAll('[data-view]').forEach(button => button.onclick = () =
 $('device-rows').onclick = async event => {
   const button = event.target.closest('button');
   if (!button) return;
+  if (button.dataset.packages) { showPackages(button.dataset.packages); return; }
   const revoke = button.dataset.revoke;
   if (revoke && !confirm('Revoke this device? Further check-ins will be rejected and pending jobs cancelled. Re-enrollment requires a new token.')) return;
   button.disabled=true;
@@ -132,3 +133,21 @@ async function loadHealth() {
   $('health-output').textContent=`Status: ${result.status}. Database: ${result.database}. Schema: ${result.schema_version}. Uptime: ${result.uptime_seconds} seconds. Records: ${result.counts.devices} devices, ${result.counts.jobs} jobs, ${result.counts.enrollments} enrollment tokens, ${result.counts.audit} audit events.`;
 }
 $('health-refresh').onclick=()=>loadHealth().catch(error=>notify(error.message));
+
+let packageItems=[];
+function showPackages(deviceId) {
+  const device=snapshot.devices.find(item=>item.id===deviceId);
+  if (!device) return;
+  $('package-title').textContent=`Packages on ${device.inventory.hostname}`;
+  const report=device.inventory.packages;
+  packageItems=report?.items || [];
+  $('package-search').value='';
+  $('package-summary').textContent=report ? `${report.scope}. Status: ${report.status}${snapshot.time-report.collected_at>900?' (stale)':''}. Collected ${date(report.collected_at)}. Showing ${packageItems.length} of ${report.total}${report.truncated?' (limited report)':''}. ${report.message}.` : 'No package report yet. Update the foreground agent and request an inventory refresh.';
+  renderPackages();
+  $('packages-dialog').showModal();
+}
+function renderPackages() {
+  const search=$('package-search').value.toLowerCase();
+  $('package-list').innerHTML=packageItems.filter(item=>item.name.toLowerCase().includes(search)).map(item=>`<div class="event"><strong>${escape(item.name)}</strong><span>${escape(item.version)}</span></div>`).join('') || '<p>No matching package records.</p>';
+}
+$('package-search').oninput=renderPackages;

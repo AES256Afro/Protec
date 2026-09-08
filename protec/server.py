@@ -12,6 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit, parse_qs
 from protec.migrations import migrate
 from protec.history import page, health
+from protec.packages import validate_report
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -127,6 +128,8 @@ def inventory_input(body):
         result[key] = value
     if result['privilege'] not in ('administrator','standard'):
         raise ValueError('Invalid privilege')
+    if 'packages' in inv:
+        result['packages']=validate_report(inv['packages'])
     return result
 
 class Handler(BaseHTTPRequestHandler):
@@ -188,7 +191,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.headers.get_content_type()!='application/json':
                 raise ValueError('Use application/json')
             size = int(self.headers.get('Content-Length','0'))
-            if size<2 or size>16384:
+            if size<2 or size>262144:
                 raise ValueError('Invalid request size')
             body = json.loads(self.rfile.read(size))
             if not isinstance(body,dict):
