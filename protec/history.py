@@ -4,7 +4,7 @@ from protec.identity import device_filter, decode_scope
 import time
 
 PROJECTIONS = {
-    'credentials':'id,name,role,created,expires,revoked,issued_by,device_ids',
+    'credentials':'id,name,role,created,expires,revoked,issued_by,device_ids,replacement_id,rotation_deadline',
     'audit':'id,time,actor,action,target',
     'jobs':'id,device,kind,status,created,result',
     'enrollments':'hash AS id,expires,used',
@@ -46,7 +46,7 @@ def page(store,kind,limit=50,cursor=None,device_ids=None):
             row['inventory']=json.loads(row['inventory'])
         elif kind=='credentials':
             row['device_ids']=decode_scope(row['device_ids'])
-            row['status']='revoked' if row.pop('revoked') else 'expired' if row['expires']<=now else 'active'
+            row['status']='revoked' if row.pop('revoked') else 'expired' if row['expires']<=now else 'rotating' if row['rotation_deadline'] is not None and row['rotation_deadline']>now else 'rotated' if row['rotation_deadline'] is not None else 'active'
         elif kind=='enrollments':
             used=row.pop('used')
             row['status']='revoked' if used==-1 else 'used' if used==1 else 'expired' if row['expires']<=now else 'active'

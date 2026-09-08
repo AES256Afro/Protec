@@ -1,6 +1,6 @@
 services:
   protec:
-    image: ghcr.io/aes256afro/protec:0.3.0
+    image: ghcr.io/aes256afro/protec:0.4.0
     build: .
     restart: unless-stopped
     ports:

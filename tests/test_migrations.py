@@ -49,7 +49,25 @@ class MigrationTests(unittest.TestCase):
         self.assertIsNone(principal['device_ids'])
         self.assertEqual(principal['role'],'viewer')
         with upgraded.connect() as db:
-            self.assertEqual(validate_schema(db),3)
+            self.assertEqual(validate_schema(db),SCHEMA_VERSION)
+
+    def test_schema_three_upgrade_preserves_scoped_credentials_and_is_repeatable(self):
+        from protec.identity import authenticate, token_hash
+        connection=self.legacy()
+        connection.execute(f'CREATE TABLE credentials ({CREDENTIAL_SCHEMA}, device_ids TEXT)')
+        connection.execute('INSERT INTO credentials VALUES (?,?,?,?,?,?,?,?,?)',('reader',token_hash('c'*43),'Scoped','operator',1,9999999999,0,'owner','["'+'d'*24+'"]'))
+        connection.execute('PRAGMA user_version=3')
+        connection.commit()
+        connection.close()
+        copy_database(self.path,Path(self.temp.name)/'before-v4.db')
+        for _ in range(2):
+            upgraded=Store(self.path)
+            principal=authenticate(upgraded,'a'*43,'c'*43)
+            self.assertEqual(principal['device_ids'],['d'*24])
+            with upgraded.connect() as db:
+                row=db.execute('SELECT replacement_id,rotation_deadline FROM credentials').fetchone()
+                self.assertEqual(tuple(row),(None,None))
+                self.assertEqual(validate_schema(db),4)
 
     def test_future_database_refused_without_creating_tables(self):
         connection = sqlite3.connect(self.path)

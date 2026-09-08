@@ -174,7 +174,7 @@ async function loadAccess(reset=true) {
   $('access-more').disabled=true;
   try {
   const result=await api('credentials'+(!reset && accessCursor?'?cursor='+accessCursor:''));
-  const entries=result.credentials.map(item=>`<div class="event"><div><strong>${escape(item.name)}</strong><p>${escape(item.role)} · ${item.device_ids?escape(item.device_ids.length+' selected devices: '+item.device_ids.join(', ')):'Whole fleet'} · Expires ${escape(date(item.expires))}</p><p>${escape(item.id)}</p></div><div><span class="badge ${item.status==='active'?'green':''}">${escape(item.status)}</span> ${item.status==='active'?`<button data-access-revoke="${escape(item.id)}">Revoke credential</button>`:''}</div></div>`).join('');
+  const entries=result.credentials.map(item=>`<div class="event"><div><strong>${escape(item.name)}</strong><p>${escape(item.role)} · ${item.device_ids?escape(item.device_ids.length+' selected devices: '+item.device_ids.join(', ')):'Whole fleet'} · Expires ${escape(date(item.expires))}</p><p>${escape(item.id)}</p>${item.replacement_id?`<p>Replacement ${escape(item.replacement_id)} · Handover deadline ${escape(date(item.rotation_deadline))}</p>`:''}</div><div><span class="badge ${item.status==='active'?'green':''}">${escape(item.status)}</span> ${item.status==='active'?`<button data-access-action="rotate" data-access-id="${escape(item.id)}">Rotate credential</button>`:''} ${['rotating','rotated'].includes(item.status)?`<button data-access-action="rotation/finish" data-access-id="${escape(item.id)}">Finish handover</button>`:''} ${item.status==='rotating'?`<button data-access-action="rotation/cancel" data-access-id="${escape(item.id)}">Cancel handover</button>`:''} ${['active','rotating','rotated'].includes(item.status)?`<button data-access-action="revoke" data-access-id="${escape(item.id)}">${item.replacement_id?'Revoke both credentials':'Revoke credential'}</button>`:''}</div></div>`).join('');
   if(reset) $('access-list').innerHTML=entries || '<p>No service credentials issued. Your local administrator token remains available in its protected file.</p>';
   else $('access-list').insertAdjacentHTML('beforeend',entries);
   accessCursor=result.next_cursor;
@@ -198,16 +198,28 @@ $('access-form').addEventListener('submit',async event=>{
 });
 $('access-dialog').addEventListener('close',()=>{$('issued-access').value='';});
 $('access-list').onclick=async event=>{
-  const button=event.target.closest('[data-access-revoke]');
+  const button=event.target.closest('[data-access-action]');
   if (!button) return;
-  if (!confirm('Revoke this service credential? It will be rejected on subsequent requests.')) return;
+  const action=button.dataset.accessAction;
+  const messages={
+    rotate:'Create a replacement with the same role, device scope and expiry? The old token will stop working in at most 15 minutes. Save the replacement before finishing the handover. You can cancel before the deadline if the response is lost.',
+    'rotation/finish':'Have you saved and tested the replacement token? Finish the handover and immediately invalidate the old token?',
+    'rotation/cancel':'Invalidate the replacement and keep the original token until its original expiry?',
+    revoke:'Revoke this credential? An unfinished handover also revokes its replacement. Subsequent requests will be rejected.'
+  };
+  if (!confirm(messages[action])) return;
   button.disabled=true;
   try {
-    await api('credentials/revoke',{id:button.dataset.accessRevoke});
-    if (button.dataset.accessRevoke===snapshot.identity.id) {location.reload();return;}
+    const result=await api('credentials/'+action,{id:button.dataset.accessId});
+    if(action==='rotate') {
+      $('issued-access').value=result.token;
+      $('issued-access-description').textContent=`Replacement for ${result.replaces}. Same ${result.role} role and device scope. Expires ${date(result.expires)}. Old token stops at ${date(result.rotation_deadline)}. Save and test this replacement, then finish the handover. If this token is lost, cancel before the deadline and rotate again. Closing this dialog clears its value.`;
+      $('access-dialog').showModal();
+    }
+    if (result.invalidated_ids?.includes(snapshot.identity.id)) {location.reload();return;}
     await loadAccess();
     await refresh();
-    notify('Service credential revoked.');
+    notify(action==='rotate'?'Replacement issued. Save it before closing the dialog.':action==='rotation/cancel'?'Handover cancelled; replacement invalidated.':action==='rotation/finish'?'Handover finished; old token invalidated.':'Service credential revoked.');
   } catch(error) {notify(error.message);button.disabled=false;}
 };
 
