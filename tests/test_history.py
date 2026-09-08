@@ -57,7 +57,7 @@ class HistoryTests(unittest.TestCase):
         with self.store.connect() as db:
             db.execute('UPDATE enrollments SET expires=?',(old,))
             for identifier,status in [('old','completed'),('pending','queued'),('running','running'),('recent-result','completed')]:
-                db.execute('INSERT INTO jobs VALUES (?,?,?,?,?,?,?)',(identifier,device['id'],'refresh_inventory',status,old,0,'test'))
+                db.execute('INSERT INTO jobs(id,device,kind,status,created,lease,result) VALUES (?,?,?,?,?,?,?)',(identifier,device['id'],'refresh_inventory',status,old,0,'test'))
             self.store.audit(db,device['id'],'inventory.completed','recent-result')
         before=self.store.snapshot()
         preview=retention(self.store,30,now=now)
@@ -72,7 +72,7 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(len(Store(backup).snapshot()['jobs']),4)
     def test_retention_failed_backup_deletes_nothing(self):
         with self.store.connect() as db:
-            db.execute("INSERT INTO jobs VALUES ('old','device','refresh_inventory','completed',0,0,'done')")
+            db.execute("INSERT INTO jobs(id,device,kind,status,created,lease,result) VALUES ('old','device','refresh_inventory','completed',0,0,'done')")
         existing=self.root/'keep'
         existing.write_text('keep')
         with self.assertRaises(ValueError):

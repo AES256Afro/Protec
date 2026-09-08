@@ -62,3 +62,15 @@ test('mock handover cutoff prevents cancellation or expiry extension',async()=>{
  assert.equal((await app.request('credentials')).credentials.find(i=>i.id===next.id).status,'expired');
  await assert.rejects(()=>app.request('credentials/rotation/finish',{id:source.id}),/no longer active/);
 });
+
+
+test('mock refresh includes a safe simulated completion receipt in job history',async()=>{
+ const app=demo(),device=(await app.request('dashboard')).devices[0].id;
+ await app.request('jobs',{device});
+ const job=(await app.request('dashboard')).jobs[0];
+ assert.equal(job.attempt,1);assert.equal(job.contract_version,1);
+ assert.equal(job.receipt.device,device);assert.equal(job.receipt.job,job.id);
+ assert.equal(job.receipt.outcome,'succeeded');assert.match(job.receipt.inventory_sha256,/^[a-f0-9]{64}$/);
+ assert.deepEqual((await app.request('history?kind=jobs')).items[0].receipt,job.receipt);
+ assert.ok(!JSON.stringify(job).includes('lease_token'));
+});

@@ -12,6 +12,7 @@ from urllib.error import URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 from protec.packages import collect as collect_packages
+from protec.jobs import inventory_digest, validate_envelope, protocol
 
 def inventory():
     privileged = os.geteuid()==0 if hasattr(os,'geteuid') else False
@@ -61,15 +62,24 @@ def cycle(state):
         state['_package_scan']=time.monotonic()
     current=inventory()
     current['packages']=state['_packages']
-    response = request(state['server'],'/api/heartbeat',state['credential'],{'inventory':current})
-    jobs=[job for job in response['jobs'] if job['kind']=='refresh_inventory']
+    response = request(state['server'],'/api/heartbeat',state['credential'],{'inventory':current,'job_protocol':1})
+    if not isinstance(response,dict) or not isinstance(response.get('jobs'),list) or len(response['jobs'])>10:
+        raise ValueError('Invalid job delivery response')
+    negotiated=protocol(response.get('job_protocol',0))
+    jobs=[validate_envelope(job,state.get('id')) for job in response['jobs']]
+    if any(job.get('version',0)!=negotiated for job in jobs):
+        raise ValueError('Delivered job does not match the negotiated protocol')
     if jobs and not fresh:
         state['_packages']=collect_packages()
         state['_package_scan']=time.monotonic()
         current['packages']=state['_packages']
-        request(state['server'],'/api/heartbeat',state['credential'],{'inventory':current})
+        request(state['server'],'/api/heartbeat',state['credential'],{'inventory':current,'job_protocol':1})
     for job in jobs:
-        request(state['server'],'/api/complete',state['credential'],{'job':job['id']})
+        completion={'job':job['id']}
+        if job.get('version')==1:
+            validate_envelope(job,state.get('id'))
+            completion.update(version=1,attempt=job['attempt'],lease_token=job['lease']['token'],result={'outcome':'succeeded','inventory_sha256':inventory_digest(current)})
+        request(state['server'],'/api/complete',state['credential'],completion)
     return len(response['jobs'])
 
 def main():
@@ -101,6 +111,10 @@ def main():
             print(f'Inventory sent; {count} job(s) received',flush=True)
         except URLError as error:
             print(f'Check-in failed: {error.reason}',flush=True)
+            if args.once:
+                raise SystemExit(1)
+        except ValueError:
+            print('Check-in rejected: invalid inventory job protocol',flush=True)
             if args.once:
                 raise SystemExit(1)
         if args.once:

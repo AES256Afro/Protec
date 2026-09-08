@@ -13,7 +13,7 @@ from urllib.parse import urlsplit, parse_qs
 from protec.migrations import migrate
 from protec.history import page, health
 from protec.packages import validate_report
-from protec import identity
+from protec import identity, jobs as job_contracts
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -70,17 +70,15 @@ class Store:
         if not row:
             raise PermissionError('Device credential rejected')
         return row['id']
-    def heartbeat(self, device, inventory):
+    def heartbeat(self, device, inventory, job_protocol=0):
+        job_contracts.protocol(job_protocol)
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             if not db.execute('SELECT id FROM devices WHERE id=? AND revoked=0',(device,)).fetchone():
                 raise PermissionError('Device revoked')
             db.execute('UPDATE devices SET inventory=?,seen=? WHERE id=?', (json.dumps(inventory),time.time(),device))
-            # Only idempotent inventory jobs can be redelivered after a lease expires.
-            rows = db.execute("SELECT id,kind FROM jobs WHERE device=? AND (status='queued' OR (status='running' AND lease<?)) ORDER BY created LIMIT 10",(device,time.time())).fetchall()
-            for row in rows:
-                db.execute("UPDATE jobs SET status='running',lease=? WHERE id=?",(time.time()+120,row['id']))
-        return {'jobs':[dict(r) for r in rows]}
+            delivered=job_contracts.deliver(db,self,device,job_protocol)
+        return {'jobs':delivered,'job_protocol':job_protocol}
     def queue(self, device, actor='administrator'):
         job = secrets.token_hex(12)
         with self.connect() as db:
@@ -89,16 +87,11 @@ class Store:
                 raise ValueError('Active device not found')
             if db.execute("SELECT id FROM jobs WHERE device=? AND status IN ('queued','running')",(device,)).fetchone():
                 raise ValueError('An inventory refresh is already pending')
-            db.execute('INSERT INTO jobs VALUES (?,?,?,?,?,?,?)',(job,device,'refresh_inventory','queued',time.time(),0,None))
+            db.execute('INSERT INTO jobs(id,device,kind,status,created,lease,result,issued_by) VALUES (?,?,?,?,?,?,?,?)',(job,device,'refresh_inventory','queued',time.time(),0,None,actor))
             self.audit(db,actor,'inventory.requested',device)
         return {'id':job}
-    def complete(self, device, job):
-        with self.connect() as db:
-            changed = db.execute("UPDATE jobs SET status='completed',result='Inventory received' WHERE id=? AND device=? AND status='running' AND EXISTS (SELECT 1 FROM devices WHERE id=? AND revoked=0)",(job,device,device)).rowcount
-            if not changed:
-                raise ValueError('No running job for this device')
-            self.audit(db,device,'inventory.completed',job)
-        return {'ok':True}
+    def complete(self, device, job, body=None):
+        return job_contracts.complete(self,device,job,body or {})
     def revoke(self, device, actor='administrator'):
         with self.connect() as db:
             if not db.execute('UPDATE devices SET revoked=1 WHERE id=? AND revoked=0',(device,)).rowcount:
@@ -113,7 +106,7 @@ class Store:
             devices = [dict(r) for r in db.execute('SELECT id,inventory,seen,revoked FROM devices WHERE '+device_condition+' ORDER BY rowid DESC LIMIT 100',params)]
             for device in devices:
                 device['inventory'] = json.loads(device['inventory'])
-            jobs = [dict(r) for r in db.execute('SELECT id,device,kind,status,created,result FROM jobs WHERE '+job_condition+' ORDER BY created DESC LIMIT 100',params)]
+            jobs = [job_contracts.public_record(r) for r in db.execute('SELECT '+job_contracts.PROJECTION+' FROM jobs WHERE '+job_condition+' ORDER BY created DESC LIMIT 100',params)]
             fleet = dict(db.execute('SELECT count(*) AS records,coalesce(sum(revoked=0),0) AS active,coalesce(sum(revoked=0 AND seen>?),0) AS online FROM devices WHERE '+device_condition,[time.time()-90,*params]).fetchone())
             pending = db.execute("SELECT count(*) FROM jobs WHERE status IN ('queued','running') AND "+job_condition,params).fetchone()[0]
             audit = [dict(r) for r in db.execute('SELECT * FROM audit ORDER BY id DESC LIMIT 100')] if include_audit and device_ids is None else []
@@ -220,9 +213,9 @@ class Handler(BaseHTTPRequestHandler):
             if path=='/api/enroll':
                 result = store.enroll(self.bearer(),inventory_input(body))
             elif path=='/api/heartbeat':
-                result = store.heartbeat(store.identify(self.bearer()),inventory_input(body))
+                result = store.heartbeat(store.identify(self.bearer()),inventory_input(body),body.get('job_protocol',0))
             elif path=='/api/complete':
-                result = store.complete(store.identify(self.bearer()),str(body.get('job','')))
+                result = store.complete(store.identify(self.bearer()),str(body.get('job','')),body)
             else:
                 permissions={'/api/enrollments':'enrollments.write','/api/enrollments/revoke':'enrollments.write','/api/jobs':'jobs.write','/api/revoke':'devices.revoke','/api/credentials':'credentials.write','/api/credentials/revoke':'credentials.write','/api/credentials/rotate':'credentials.write','/api/credentials/rotation/finish':'credentials.write','/api/credentials/rotation/cancel':'credentials.write'}
                 if path not in permissions:

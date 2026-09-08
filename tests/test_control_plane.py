@@ -131,13 +131,28 @@ class HTTPTests(unittest.TestCase):
         dashboard = self.request('/api/dashboard','a'*40)[1]
         self.assertEqual(dashboard['jobs'][0]['status'],'completed')
         self.assertEqual(len(dashboard['devices']),1)
+    def test_typed_http_receipt_and_legacy_delivery_coexist(self):
+        token=self.request('/api/enrollments','a'*40,{})[1]['token']
+        device=self.request('/api/enroll',token,{'inventory':inventory()})[1]
+        self.request('/api/jobs','a'*40,{'device':device['id']})
+        delivery=self.request('/api/heartbeat',device['credential'],{'inventory':inventory()})[1]
+        self.assertEqual(set(delivery['jobs'][0]),{'id','kind'})
+        self.assertEqual(self.request('/api/complete',device['credential'],{'job':delivery['jobs'][0]['id']})[0],200)
+        self.request('/api/jobs','a'*40,{'device':device['id']})
+        cycle({**device,'server':self.url})
+        jobs=self.request('/api/history?kind=jobs','a'*40)[1]['items']
+        self.assertEqual(jobs[0]['receipt']['version'],1)
+        self.assertEqual(jobs[0]['receipt']['outcome'],'succeeded')
+        self.assertIsNone(jobs[1]['receipt'])
+        self.assertEqual(self.request('/api/heartbeat',device['credential'],{'inventory':inventory(),'job_protocol':True})[0],400)
+
     def test_history_and_health_require_admin_and_validate_queries(self):
         for path in ('/api/history','/api/health'):
             self.assertEqual(self.request(path)[0],401)
             self.assertEqual(self.request(path,'a'*40)[0],200)
         for query in ('limit=0','limit=999','limit=bad','cursor=-1','cursor=999999999999999999999','kind=sqlite_master'):
             self.assertEqual(self.request('/api/history?'+query,'a'*40)[0],400)
-        self.assertEqual(self.request('/api/health','a'*40)[1]['schema_version'],4)
+        self.assertEqual(self.request('/api/health','a'*40)[1]['schema_version'],5)
 
     def test_enrollment_metadata_requires_admin(self):
         token = self.request('/api/enrollments','a'*40,{})[1]['token']
