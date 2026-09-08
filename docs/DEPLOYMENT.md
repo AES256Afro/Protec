@@ -55,7 +55,9 @@ From a Protec checkout on Linux or macOS, create a single-use enrollment token i
 python3 -m protec.agent --enroll --server https://protec.example.com
 ```
 
-Paste the token at the prompt. The foreground agent stores its own credential in `.protec/agent.json` and sends inventory every 30 seconds. Keep it running for check-ins. This version does not install an OS service or elevate privileges.
+Paste the token at the prompt. On macOS, if Python has no default CA certificates, the agent uses `/etc/ssl/cert.pem`. Explicit `SSL_CERT_FILE` or `SSL_CERT_DIR` settings are preserved. Certificate and hostname verification remain mandatory.
+
+The foreground agent stores its own credential in `.protec/agent.json` and sends inventory every 30 seconds. Keep it running for check-ins. This version does not install an OS service or elevate privileges.
 
 ## Back up, update, and roll back
 
@@ -87,3 +89,11 @@ Cloudflare authentication and access to the domain are required for website publ
 ## Current limits
 
 This is not yet a complete Intune replacement. Package installation, patching, policy enforcement, SSH sessions, VPN management, SSO/MFA, signed jobs, and native Windows services remain roadmap work. Use a private network for the management pilot. Inventory and privilege reports come from the enrolled device and are not independent compliance attestation.
+
+After publishing, read the running image's `org.opencontainers.image.revision` label and verify the served demo, including its actual JavaScript bytes:
+
+```sh
+python3 scripts/check_release.py --revision FULL_DEPLOYED_COMMIT
+```
+
+The ongoing Protec build automation also carries this parity requirement. A docs-only or agent-only commit may be newer than the deployed control-plane release; use the running image revision when checking the public demo.
