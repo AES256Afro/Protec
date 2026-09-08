@@ -1,5 +1,7 @@
 # Protec infrastructure platform roadmap
 
+This roadmap tracks the current 0.x implementation slices. The multi-year destination, covering native Apple and Windows MDM, deep Linux management and everything else a Jamf or Intune replacement needs, is the [Platform Program plan](PLATFORM_ROADMAP.md); its Appendix A maps every milestone below into that program.
+
 Protec will manage the lifecycle of authorized endpoints and servers: enrollment, identity, packages, desired configuration, updates, network access, remote administration, and operational evidence. Linux is the first complete management target, followed by Windows and macOS. A MacBook is the available local development/test host, so local inventory and dashboard workflows must work there throughout development.
 
 ## Delivery milestones
