@@ -41,7 +41,7 @@ The control plane binds only to loopback. This is for testing on a single host. 
 ## Implemented
 
 - SQLite device inventory and latest check-in time.
-- Single-use, 15-minute enrollment tokens, consumed atomically.
+- Single-use, 15-minute enrollment tokens, consumed atomically. The Enrollments view lists token metadata and lets an administrator revoke unused tokens; secret values are never returned in that list.
 - Unique device credentials; the server stores SHA-256 digests rather than bearer secrets.
 - Separate administrator and device authentication.
 - Inventory refresh queue with a two-minute lease and idempotent redelivery.
