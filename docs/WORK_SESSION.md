@@ -30,3 +30,11 @@ The earlier four-hour schedules are superseded. Continue independent work until 
 3. Continue M4 typed, signed, bounded execution. M5 policy/configuration previews and read-only network/SSH/WireGuard inventory can proceed while external identity/native dependencies remain.
 
 There is no deadline. Continue all meaningful independent milestones. Only pause for completion, user cancellation, or a concrete external dependency after independent work is exhausted. Do not mark the full M3 or platform complete based on this local credential foundation.
+
+## Hosting milestone in progress, September 8
+
+User explicitly authorized deployment on BigBox, an independent deployment path, an optional BoxPilot catalog entry, and a public website/demo on foragefournuts.com. The demo must track shipped milestones with mock data and matching screens. These requirements take priority over the older next-work list.
+
+Implemented: Gunicorn WSGI adapter with shared route authorization, explicit HTTPS origin checking, readiness endpoint, non-root persistent container and Compose setup, catalog manifest in the BoxPilot checkout, and static public demo exported from the real dashboard. Tests currently pass locally: 40 Python, 4 JavaScript, BoxPilot full check with 1,628 tests. Publication and host verification are tracked below when complete.
+
+BigBox Docker access works through the bigbox SSH account. Adding a Tailscale Serve mapping requires sudo; unattended sudo is unavailable. The existing antifascist.work tab is a fictional BoxPilot demo, not an authenticated live session. Do not use it as evidence of host access. The private live BoxPilot portal requires application login.

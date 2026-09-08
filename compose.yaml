@@ -1,0 +1,21 @@
+services:
+  protec:
+    image: ghcr.io/aes256afro/protec:0.2.0
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8765:8765"
+    environment:
+      PROTEC_PUBLIC_URL: ${PROTEC_PUBLIC_URL:-http://127.0.0.1:8765}
+    volumes:
+      - data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    pids_limit: 128
+volumes:
+  data:

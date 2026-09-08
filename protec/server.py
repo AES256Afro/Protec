@@ -158,6 +158,10 @@ class Handler(BaseHTTPRequestHandler):
         try:
             url = urlsplit(self.path)
             path = url.path
+            if path=='/healthz':
+                with self.server.store.connect() as db:
+                    db.execute('SELECT 1 FROM devices LIMIT 1').fetchone()
+                return self.reply(200,{'status':'ok'})
             if path=='/api/history':
                 query = parse_qs(url.query)
                 kind=query.get('kind',['audit'])[0]
@@ -198,7 +202,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             # Bearer-only requests, JSON, and no CORS permission protect browser writes.
             origin = self.headers.get('Origin')
-            if origin and origin != 'http://'+self.headers.get('Host',''):
+            expected_origin = getattr(self.server,'public_url',None) or 'http://'+self.headers.get('Host','')
+            if origin and origin != expected_origin:
                 raise PermissionError('Cross-origin requests are rejected')
             if self.headers.get_content_type()!='application/json':
                 raise ValueError('Use application/json')
