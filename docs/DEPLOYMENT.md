@@ -1,6 +1,8 @@
 # Deploy Protec
 
-Protec 0.3 is a private fleet inventory pilot. It can run independently of BoxPilot. The image contains the control plane and dashboard, with SQLite data under `/data`. Agents connect outbound over HTTPS. The portal does not need root, a Docker socket, or host network access.
+Protec 0.3 is a private fleet inventory pilot. Docker Compose is the default installation method for the control plane and dashboard. It can run independently of BoxPilot, which offers an optional catalog installation of the same container image. SQLite data lives under `/data` in persistent storage and survives container replacement.
+
+Device agents run directly on their Linux or macOS hosts and connect outbound over HTTPS. Endpoint management will use native services and appropriate host permissions as those capabilities ship. Installing the portal container does not grant it administrative access to enrolled devices. The portal does not need root, a Docker socket, or host network access.
 
 ## Independent Docker Compose install
 
@@ -35,7 +37,7 @@ The default image runs as UID/GID `10001:10001`. Compose uses a named persistent
 
 ## BoxPilot app catalog
 
-Update BoxPilot to a release containing `catalog/protec.yaml`, then open **App catalog**, search **Protec**, and select **Install**.
+Update BoxPilot to **1.116.0 or later**, which includes `catalog/protec.yaml`, then open **App catalog**, search **Protec**, and select **Install**.
 
 1. Choose **Tailnet** access, or prepare an HTTPS reverse proxy on the host.
 2. Enter the exact **Portal HTTPS origin**, including the chosen port. Default port: 8765.
