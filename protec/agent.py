@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import platform
 import socket
+import ssl
 import time
 from urllib.error import URLError
 from urllib.parse import urlsplit
@@ -26,20 +27,31 @@ def inventory():
 
 def validate_server(url):
     parsed = urlsplit(url)
-    if parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in ('','/'):
+    if not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in ('','/'):
         raise ValueError('Use a server origin without credentials, path, query, or fragment')
+    parsed.port
     if parsed.scheme!='https' and not (parsed.scheme=='http' and parsed.hostname in ('127.0.0.1','::1','localhost')):
         raise ValueError('Remote connections require HTTPS')
     return url.rstrip('/')
 
+def tls_context():
+    context = ssl.create_default_context()
+    # Some python.org Mac installs have no OpenSSL CA bundle until their setup
+    # script runs. Use the OS CA bundle only when no custom trust was configured.
+    if (platform.system()=='Darwin' and not context.cert_store_stats()['x509_ca']
+            and not os.environ.get('SSL_CERT_FILE') and not os.environ.get('SSL_CERT_DIR')
+            and Path('/etc/ssl/cert.pem').is_file()):
+        context.load_verify_locations(cafile='/etc/ssl/cert.pem')
+    return context
+
 def request(server,path,token,body):
     req = Request(server+path,json.dumps(body).encode(),{'Authorization':'Bearer '+token,'Content-Type':'application/json'})
     # Do not follow redirects with an endpoint credential.
-    from urllib.request import HTTPRedirectHandler, build_opener
+    from urllib.request import HTTPRedirectHandler, HTTPSHandler, build_opener
     class NoRedirect(HTTPRedirectHandler):
         def redirect_request(self,*args,**kwargs):
             return None
-    with build_opener(NoRedirect).open(req,timeout=15) as response:
+    with build_opener(NoRedirect,HTTPSHandler(context=tls_context())).open(req,timeout=15) as response:
         return json.load(response)
 
 def cycle(state):
