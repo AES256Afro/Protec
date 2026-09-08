@@ -49,6 +49,14 @@ BoxPilot manages the data directory and uses the same published image as indepen
 
 The catalog entry is delivered with BoxPilot releases. Publishing the manifest to GitHub does not update a running BoxPilot installation automatically.
 
+### Moving an existing independent installation into BoxPilot
+
+BoxPilot's catalog tracks installations created by its deployer. An independent Compose stack can appear under **Also on this server** while its catalog card says **Not installed**. Installing another copy on the same port causes a conflict; catalog availability alone does not transfer management.
+
+For a migration, take consistent backups and compare the source databases for new writes. Install a managed copy on an unused loopback port, stop its container, and transfer the verified database into its declared `/data` mount with owner `10001:10001` and mode 0600. Stop the independent stack before changing the managed copy to the original port through **Settings**. Verify database integrity, private HTTPS, agent check-in and a completed inventory refresh before retiring the old container. Preserve its volume and Compose file for recovery. Finish with a BoxPilot **Back up** operation.
+
+The managed installation uses the administrator token from BoxPilot's **Sign in** or **Secrets** panel. Device credentials and named service credentials live in the transferred database and remain valid. Future image updates, port/origin settings, backups, and restarts should use the managed app. Do not start the retired independent stack on the same port.
+
 ## Enroll a device
 
 From a Protec checkout on Linux or macOS, create a single-use enrollment token in the portal and run:
