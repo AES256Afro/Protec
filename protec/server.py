@@ -224,7 +224,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path=='/api/complete':
                 result = store.complete(store.identify(self.bearer()),str(body.get('job','')))
             else:
-                permissions={'/api/enrollments':'enrollments.write','/api/enrollments/revoke':'enrollments.write','/api/jobs':'jobs.write','/api/revoke':'devices.revoke','/api/credentials':'credentials.write','/api/credentials/revoke':'credentials.write'}
+                permissions={'/api/enrollments':'enrollments.write','/api/enrollments/revoke':'enrollments.write','/api/jobs':'jobs.write','/api/revoke':'devices.revoke','/api/credentials':'credentials.write','/api/credentials/revoke':'credentials.write','/api/credentials/rotate':'credentials.write','/api/credentials/rotation/finish':'credentials.write','/api/credentials/rotation/cancel':'credentials.write'}
                 if path not in permissions:
                     return self.reply(404,{'error':'Not found'})
                 target=str(body.get('device','')) if path in ('/api/jobs','/api/revoke') else None
@@ -239,6 +239,10 @@ class Handler(BaseHTTPRequestHandler):
                     result = store.revoke(str(body.get('device','')),actor)
                 elif path=='/api/credentials':
                     result = identity.issue(store,body.get('name'),body.get('role'),body.get('hours'),actor,body.get('device_ids'))
+                elif path=='/api/credentials/rotate':
+                    result = identity.rotate(store,str(body.get('id','')),actor)
+                elif path in ('/api/credentials/rotation/finish','/api/credentials/rotation/cancel'):
+                    result = identity.resolve_rotation(store,str(body.get('id','')),actor,cancel=path.endswith('/cancel'))
                 elif path=='/api/credentials/revoke':
                     result = identity.revoke(store,str(body.get('id','')),actor)
             self.reply(200,result)

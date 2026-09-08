@@ -8,7 +8,7 @@ The Access view lets an administrator issue a named credential with a role and a
 | Operator | Viewer permissions plus queue inventory refreshes |
 | Administrator | Operator permissions plus enrollment/token management, device revocation, audit history, and service credential issuance/revocation |
 
-Roles apply to the whole fleet unless a viewer/operator credential has an explicit device scope. Scoped credentials omit fleet-wide health access. User identity federation, SSO/MFA, rotation with recovery, and OS secret-store integration remain future M3 work.
+Roles apply to the whole fleet unless a viewer/operator credential has an explicit device scope. Scoped credentials omit fleet-wide health access. User identity federation, SSO/MFA and OS secret-store integration remain future M3 work.
 
 The server enforces permissions on each HTTP route. Hiding controls in the dashboard is only presentation. Issued service credentials cannot authenticate as device agents or use device heartbeat/completion routes. Device credentials cannot access management routes. Viewer/operator dashboard responses omit audit events; the protected audit, enrollment and access-history routes return 403 to those roles.
 
@@ -37,4 +37,26 @@ Send `device_ids: ["DEVICE_ID"]` when creating the credential, or omit it/use nu
 
 The server filters dashboard inventory, jobs, fleet counters and history queries before limiting or paging. Refresh jobs check both the operator permission and the target device ID before insertion. Scoped credentials cannot access fleet health counts, audit, enrollments or credential administration. Device revocation remains an administrator action; previously scoped historical inventory remains visible for those selected records. Scope metadata appears in credential listings, but secret tokens and hashes do not. Corrupt stored scopes fail authentication instead of falling back to fleet access.
 
-Schema 3 adds a nullable scope column. Existing schema-2 credentials retain their fleet scope. Back up before updating; an older image cannot open schema 3. Use a pre-upgrade backup for rollback. SSO/MFA, recoverable rotation, and protected native secret stores remain separate work.
+Schema 3 adds a nullable scope column. Existing schema-2 credentials retain their fleet scope. Back up before updating; an older image cannot open schema 3. Use a pre-upgrade backup for rollback. SSO/MFA and protected native secret stores remain separate work.
+
+
+## Recoverable service-token rotation (0.4)
+
+In **Access**, choose **Rotate credential** beside an active service credential. Save the one-time replacement and test it in another session or client. The replacement retains the original name, role, device scope and expiration time. Rotation never extends its lifetime or grants more authority. Both tokens work during a handover of at most 15 minutes, capped by the original expiry.
+
+- **Finish handover** invalidates the old token immediately. Use this after testing the replacement. The server does not independently prove that the operator has saved it.
+- **Cancel handover** invalidates the replacement and restores the old token's original expiration, only before the handover deadline. If the response was lost, find the original row and its replacement ID in Access, cancel, and rotate again. Plaintext is never redisplayed.
+- After the deadline, the old token is rejected on every new request, even without a cleanup worker or server restart. Cancellation cannot restore expired access. A saved replacement remains usable until the original expiry. If it was lost, sign in using a separate administrator or the bootstrap token, revoke the unfinished pair, and issue a new credential.
+- **Revoke both credentials** on an unfinished handover invalidates the old and replacement tokens atomically. Revoking only the replacement leaves the old token usable until its existing deadline; cancel the handover before that deadline if recovery is intended.
+
+Only administrators can start, finish or cancel rotation. Bootstrap and device-agent identities are outside this service-token workflow. Already authorized in-flight requests may finish. An active replacement cannot be rotated again until its predecessor's handover is finished or predecessor is revoked. Each transition is transactional with its audit event; concurrent starts or conflicting resolutions have one winner. Audit targets contain the old and replacement IDs, never the token.
+
+API requests use the original credential's `id`:
+
+- `POST /api/credentials/rotate`: returns the replacement's one-time `token`, `id`, role/scope/expiry, `replaces`, and `rotation_deadline`.
+- `POST /api/credentials/rotation/finish`: retires the old credential.
+- `POST /api/credentials/rotation/cancel`: invalidates the replacement before cutoff.
+- Finish, cancel and revoke return `invalidated_ids` so clients can clear a session affected by the action.
+- Listings include `replacement_id` and `rotation_deadline`. A handover's old row is `rotating` before the deadline, `rotated` after it, or `revoked` after explicit completion. Original expiry still takes precedence. Replacement metadata remains a separate row.
+
+Schema 4 adds nullable replacement/deadline columns; existing credentials retain their authority and expiry. Back up before upgrading and test a copy. An older image cannot open schema 4; rollback requires the pre-upgrade database. A restore can also restore older authorization state, so reapply revocations before opening access.

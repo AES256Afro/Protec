@@ -10,7 +10,7 @@
   const enrollments=[];
   const credentials=[];
   const record=(action,target)=>audit.unshift({id:++sequence,time:now(),actor:'demo-administrator',action,target});
-  const status=(items)=>items.map(item=>({...item,status:item.status==='revoked'?'revoked':item.expires<now()?'expired':item.status}));
+  const status=(items)=>items.map(item=>({...item,status:item.status==='revoked'?'revoked':item.expires<=now()?'expired':item.rotation_deadline!=null?(item.rotation_deadline>now()?'rotating':'rotated'):item.status}));
   globalThis.protecDemo={async request(path,body){
     const [route,query='']=path.split('?');
     let result;
@@ -18,11 +18,39 @@
       if(route==='dashboard') result={devices,jobs,audit,time:now(),pending:0,fleet:{records:devices.length,active:devices.filter(d=>!d.revoked).length,online:devices.filter(d=>!d.revoked && now()-d.seen<90).length},identity:{id:'demo-administrator',name:'Demo administrator',role:'administrator',device_ids:null,permissions}};
       else if(route==='enrollments') result={enrollments:status(enrollments)};
       else if(route==='credentials') result={credentials:status(credentials),next_cursor:null};
-      else if(route==='health') result={status:'simulated',database:'mock data in this tab',schema_version:3,uptime_seconds:0,counts:{devices:devices.length,jobs:jobs.length,enrollments:enrollments.length,audit:audit.length}};
+      else if(route==='health') result={status:'simulated',database:'mock data in this tab',schema_version:4,uptime_seconds:0,counts:{devices:devices.length,jobs:jobs.length,enrollments:enrollments.length,audit:audit.length}};
       else if(route==='history') { const kind=new URLSearchParams(query).get('kind'); const items={devices,jobs,audit,enrollments:status(enrollments)}[kind]; if(!items) throw Error('Unknown history collection'); result={items,next_cursor:null,kind}; }
     } else if(route==='enrollments') {const item={id:id(),expires:now()+900,status:'active'};enrollments.unshift(item);record('enrollment.created',item.id);result={token:'DEMO_ONLY_NOT_A_REAL_ENROLLMENT_TOKEN',expires_in:900};}
-    else if(route==='enrollments/revoke'||route==='credentials/revoke') {const list=route.startsWith('enrollments')?enrollments:credentials;const item=list.find(i=>i.id===body.id && i.status==='active');if(!item) throw Error('Active mock credential not found');item.status='revoked';record(route.startsWith('enrollments')?'enrollment.revoked':'credential.revoked',item.id);result={ok:true};}
-    else if(route==='credentials') {if(!['viewer','operator','administrator'].includes(body.role)||!body.name?.trim()||!Number.isInteger(body.hours)||body.hours<1||body.hours>720) throw Error('Enter a name, role, and lifetime of 1 to 720 hours'); if(body.device_ids!==undefined && body.device_ids!==null && (!Array.isArray(body.device_ids)||!body.device_ids.length||body.device_ids.length>100||new Set(body.device_ids).size!==body.device_ids.length||body.role==='administrator'||body.device_ids.some(id=>!devices.some(d=>d.id===id&&!d.revoked)))) throw Error('Select active mock devices for a viewer or operator credential'); const item={id:id(),name:body.name,role:body.role,device_ids:body.device_ids??null,created:now(),expires:now()+body.hours*3600,status:'active'};credentials.unshift(item);record('credential.issued',item.id);result={...item,token:'DEMO_ONLY_NOT_A_REAL_ACCESS_TOKEN'};}
+    else if(route==='enrollments/revoke') {const list=route.startsWith('enrollments')?enrollments:credentials;const item=list.find(i=>i.id===body.id && i.status==='active');if(!item) throw Error('Active mock credential not found');item.status='revoked';record(route.startsWith('enrollments')?'enrollment.revoked':'credential.revoked',item.id);result={ok:true};}
+    else if(route==='credentials') {if(!['viewer','operator','administrator'].includes(body.role)||!body.name?.trim()||!Number.isInteger(body.hours)||body.hours<1||body.hours>720) throw Error('Enter a name, role, and lifetime of 1 to 720 hours'); if(body.device_ids!==undefined && body.device_ids!==null && (!Array.isArray(body.device_ids)||!body.device_ids.length||body.device_ids.length>100||new Set(body.device_ids).size!==body.device_ids.length||body.role==='administrator'||body.device_ids.some(id=>!devices.some(d=>d.id===id&&!d.revoked)))) throw Error('Select active mock devices for a viewer or operator credential'); const item={id:id(),name:body.name,role:body.role,device_ids:body.device_ids??null,created:now(),expires:now()+body.hours*3600,status:'active',replacement_id:null,rotation_deadline:null};credentials.unshift(item);record('credential.issued',item.id);result={...item,token:'DEMO_ONLY_NOT_A_REAL_ACCESS_TOKEN'};}
+    else if(['credentials/rotate','credentials/rotation/finish','credentials/rotation/cancel','credentials/revoke'].includes(route)) {
+      const item=credentials.find(i=>i.id===body.id && i.status!=='revoked');
+      if(!item) throw Error('Unrevoked mock service credential not found');
+      const replacement=credentials.find(i=>i.id===item.replacement_id);
+      if(route==='credentials/rotate') {
+        if(item.expires<=now()||item.replacement_id) throw Error('Active credential without a pending rotation required');
+        if(credentials.some(i=>i.replacement_id===item.id&&i.status!=='revoked')) throw Error('Finish the previous handover before rotating its replacement');
+        const next={...item,id:id(),created:now()};
+        item.replacement_id=next.id;item.rotation_deadline=Math.min(now()+900,item.expires);
+        credentials.unshift(next);record('credential.rotation_started',item.id+':'+next.id);
+        result={...next,token:'DEMO_ONLY_NOT_A_REAL_ACCESS_TOKEN',replaces:item.id,rotation_deadline:item.rotation_deadline};
+      } else if(route==='credentials/revoke') {
+        item.status='revoked';record('credential.revoked',item.id);
+        if(replacement&&replacement.status!=='revoked'){replacement.status='revoked';record('credential.revoked',replacement.id);}
+        result={ok:true,invalidated_ids:[item.id,...(replacement?[replacement.id]:[])]};
+      } else {
+        if(!replacement) throw Error('Pending credential rotation not found');
+        if(route.endsWith('/cancel')) {
+          if(now()>=Math.min(item.rotation_deadline,item.expires)) throw Error('Handover deadline passed; use another administrator credential to issue a replacement');
+          replacement.status='revoked';item.replacement_id=null;item.rotation_deadline=null;
+          record('credential.rotation_cancelled',item.id+':'+replacement.id);
+        } else {
+          if(replacement.status==='revoked'||replacement.expires<=now()) throw Error('Replacement credential is no longer active');
+          item.status='revoked';record('credential.rotation_finished',item.id+':'+replacement.id);
+        }
+        result={ok:true,invalidated_ids:[route.endsWith('/cancel')?replacement.id:item.id]};
+      }
+    }
     else if(route==='jobs'||route==='revoke') {const device=devices.find(d=>d.id===body.device&&!d.revoked);if(!device) throw Error('Active mock device not found');if(route==='revoke'){device.revoked=1;record('device.revoked',device.id);}else{device.seen=now();device.inventory.packages.collected_at=now();jobs.unshift({id:id(),device:device.id,kind:'refresh_inventory',status:'completed',created:now(),result:'Simulated inventory received'});record('inventory.completed',device.id);}result={ok:true};}
     if(!result) throw Error('This operation is not available in the demo');
     return structuredClone(result);

@@ -137,7 +137,7 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(self.request(path,'a'*40)[0],200)
         for query in ('limit=0','limit=999','limit=bad','cursor=-1','cursor=999999999999999999999','kind=sqlite_master'):
             self.assertEqual(self.request('/api/history?'+query,'a'*40)[0],400)
-        self.assertEqual(self.request('/api/health','a'*40)[1]['schema_version'],3)
+        self.assertEqual(self.request('/api/health','a'*40)[1]['schema_version'],4)
 
     def test_enrollment_metadata_requires_admin(self):
         token = self.request('/api/enrollments','a'*40,{})[1]['token']
