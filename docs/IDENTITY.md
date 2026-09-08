@@ -28,3 +28,13 @@ The database stores only SHA-256 digests of random 256-bit service tokens. A dat
 The existing `.protec/admin-token` remains a separate bootstrap/recovery credential with administrator permissions. It does not expire, is not listed among service credentials, and cannot be revoked by the service-credential endpoint. Its audit actor id is `local-administrator`. File ownership and owner-only permissions remain its protection. Keep it local; use expiring service credentials for narrower access. Replacing the local token file requires restarting the control plane and is not an implemented automatic rotation workflow.
 
 Schema version 2 introduces the credentials table. Upgrade from schema 0 or 1 is transactional and preserves device credentials and inventory. Take a backup and verify a copy before upgrading a live service. None of this makes the loopback development HTTP server suitable for remote production exposure.
+
+## Device-scoped credentials (0.3)
+
+An administrator can issue a viewer or operator credential for the whole fleet or an explicit list of 1 to 100 active device IDs. Choose **Selected devices** in Access, then select the devices before issuance. The selector shows the latest 100 loaded devices; the API accepts active older IDs too. Scope membership is fixed at issuance. Revoke and reissue the credential to change membership. New enrollments are not automatically included.
+
+Send `device_ids: ["DEVICE_ID"]` when creating the credential, or omit it/use null for fleet access. Empty, duplicate, unknown, malformed and revoked-device lists are rejected. Administrator credentials cover the fleet and cannot have a device scope. Only an existing administrator can issue credentials.
+
+The server filters dashboard inventory, jobs, fleet counters and history queries before limiting or paging. Refresh jobs check both the operator permission and the target device ID before insertion. Scoped credentials cannot access fleet health counts, audit, enrollments or credential administration. Device revocation remains an administrator action; previously scoped historical inventory remains visible for those selected records. Scope metadata appears in credential listings, but secret tokens and hashes do not. Corrupt stored scopes fail authentication instead of falling back to fleet access.
+
+Schema 3 adds a nullable scope column. Existing schema-2 credentials retain their fleet scope. Back up before updating; an older image cannot open schema 3. Use a pre-upgrade backup for rollback. SSO/MFA, recoverable rotation, and protected native secret stores remain separate work.

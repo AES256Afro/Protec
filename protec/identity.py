@@ -1,5 +1,6 @@
 """Local service credentials and role authorization, separate from device identity."""
 import hashlib
+import json
 import re
 import secrets
 import time
@@ -20,31 +21,74 @@ def authenticate(store,bootstrap_token,token):
     if not isinstance(token,str) or not re.fullmatch(r'[A-Za-z0-9_-]{32,128}',token):
         raise PermissionError('Valid access token required')
     if secrets.compare_digest(token.encode('ascii'),bootstrap_token.encode('utf-8')):
-        return {'id':'local-administrator','name':'Local administrator','role':'administrator','permissions':sorted(ROLES['administrator'])}
+        return {'id':'local-administrator','name':'Local administrator','role':'administrator','permissions':sorted(ROLES['administrator']),'device_ids':None}
     with store.connect() as db:
-        row=db.execute('SELECT id,name,role FROM credentials WHERE hash=? AND revoked=0 AND expires>?',(token_hash(token),time.time())).fetchone()
+        row=db.execute('SELECT id,name,role,device_ids FROM credentials WHERE hash=? AND revoked=0 AND expires>?',(token_hash(token),time.time())).fetchone()
     if row is None or row['role'] not in ROLES:
         raise PermissionError('Access token expired, revoked or unknown')
-    return {**dict(row),'permissions':sorted(ROLES[row['role']])}
+    scope = decode_scope(row['device_ids'])
+    if scope is not None and row['role']=='administrator':
+        raise PermissionError('Invalid credential scope')
+    permissions=ROLES[row['role']] - ({'health.read'} if scope is not None else set())
+    return {**dict(row),'device_ids':scope,'permissions':sorted(permissions)}
 
-def require(identity,permission):
+def require(identity,permission,device=None):
     if permission not in identity['permissions']:
         raise Forbidden('This credential does not permit '+permission)
+    if device is not None and identity.get('device_ids') is not None and device not in identity['device_ids']:
+        raise Forbidden('This credential does not permit access to that device')
     return identity
 
-def issue(store,name,role,hours,actor):
+def decode_scope(value):
+    if value is None:
+        return None
+    try:
+        scope=json.loads(value)
+    except (ValueError,TypeError):
+        raise PermissionError('Invalid credential scope') from None
+    if (not isinstance(scope,list) or not 1<=len(scope)<=100 or
+            any(not isinstance(item,str) or not re.fullmatch(r'[0-9a-f]{24}',item) for item in scope) or
+            len(set(scope))!=len(scope)):
+        raise PermissionError('Invalid credential scope')
+    return scope
+
+
+def device_filter(column,device_ids):
+    """Parameterized filters for trusted device columns, including empty scopes."""
+    if column not in ('id','device'):
+        raise ValueError('Invalid device filter column')
+    if device_ids is None:
+        return '1=1',[]
+    if not device_ids:
+        return '0=1',[]
+    return column+' IN ('+','.join('?' for _ in device_ids)+')',list(device_ids)
+
+
+def issue(store,name,role,hours,actor,device_ids=None):
     if not isinstance(name,str) or not 1<=len(name.strip())<=80 or any(ord(c)<32 for c in name):
         raise ValueError('Credential name must contain 1 to 80 printable characters')
     if not isinstance(role,str) or role not in ROLES:
         raise ValueError('Unknown credential role')
     if type(hours) is not int or not 1<=hours<=720:
         raise ValueError('Credential lifetime must be 1 to 720 hours')
+    if device_ids is not None:
+        try:
+            device_ids=decode_scope(json.dumps(device_ids))
+        except PermissionError:
+            raise ValueError('Select 1 to 100 unique enrolled devices') from None
+        if role=='administrator':
+            raise ValueError('Device scopes are available for viewer and operator credentials')
     identifier,token=secrets.token_hex(12),secrets.token_urlsafe(32)
     created=time.time()
     with store.connect() as db:
-        db.execute('INSERT INTO credentials(id,hash,name,role,created,expires,revoked,issued_by) VALUES (?,?,?,?,?,?,0,?)',(identifier,token_hash(token),name.strip(),role,created,created+hours*3600,actor))
+        db.execute('BEGIN IMMEDIATE')
+        if device_ids is not None:
+            condition,params=device_filter('id',device_ids)
+            if db.execute('SELECT count(*) FROM devices WHERE revoked=0 AND '+condition,params).fetchone()[0]!=len(device_ids):
+                raise ValueError('Select active enrolled devices')
+        db.execute('INSERT INTO credentials(id,hash,name,role,created,expires,revoked,issued_by,device_ids) VALUES (?,?,?,?,?,?,0,?,?)',(identifier,token_hash(token),name.strip(),role,created,created+hours*3600,actor,json.dumps(device_ids) if device_ids is not None else None))
         store.audit(db,actor,'credential.issued',identifier)
-    return {'id':identifier,'token':token,'name':name.strip(),'role':role,'expires':created+hours*3600}
+    return {'id':identifier,'token':token,'name':name.strip(),'role':role,'expires':created+hours*3600,'device_ids':device_ids}
 
 def listing(store,cursor=None):
     from protec.history import page

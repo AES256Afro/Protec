@@ -2,7 +2,7 @@
 
 A Linux-first endpoint management project, with Windows and macOS planned next. The goal is a dashboard for enrollment, security posture, logs, configurations, patches, and audited remote access.
 
-**Version 0.2 is a self-hosted inventory pilot.** It supports independent Docker Compose deployment, an optional BoxPilot catalog install, enrollment, package inventory, and role-based credentials. It does not yet enforce security policies, collect system logs, install patches, deploy configurations, or open remote sessions.
+**Version 0.3 is a self-hosted inventory pilot.** It supports independent Docker Compose deployment, an optional BoxPilot catalog install, enrollment, package inventory, and role-based credentials with optional device scopes. It does not yet enforce security policies, collect system logs, install patches, deploy configurations, or open remote sessions.
 
 Website: [foragefournuts.com](https://foragefournuts.com) · [Interactive mock demo](https://foragefournuts.com/demo/) · [Independent and BoxPilot deployment](docs/DEPLOYMENT.md)
 

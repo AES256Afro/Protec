@@ -106,15 +106,17 @@ class Store:
             db.execute("UPDATE jobs SET status='cancelled' WHERE device=? AND status IN ('queued','running')",(device,))
             self.audit(db,actor,'device.revoked',device)
         return {'ok':True}
-    def snapshot(self, include_audit=True):
+    def snapshot(self, include_audit=True, device_ids=None):
+        device_condition,params=identity.device_filter('id',device_ids)
+        job_condition,_=identity.device_filter('device',device_ids)
         with self.connect() as db:
-            devices = [dict(r) for r in db.execute('SELECT id,inventory,seen,revoked FROM devices ORDER BY rowid DESC LIMIT 100')]
+            devices = [dict(r) for r in db.execute('SELECT id,inventory,seen,revoked FROM devices WHERE '+device_condition+' ORDER BY rowid DESC LIMIT 100',params)]
             for device in devices:
                 device['inventory'] = json.loads(device['inventory'])
-            jobs = [dict(r) for r in db.execute('SELECT id,device,kind,status,created,result FROM jobs ORDER BY created DESC LIMIT 100')]
-            fleet = dict(db.execute('SELECT count(*) AS records,coalesce(sum(revoked=0),0) AS active,coalesce(sum(revoked=0 AND seen>?),0) AS online FROM devices',(time.time()-90,)).fetchone())
-            pending = db.execute("SELECT count(*) FROM jobs WHERE status IN ('queued','running')").fetchone()[0]
-            audit = [dict(r) for r in db.execute('SELECT * FROM audit ORDER BY id DESC LIMIT 100')] if include_audit else []
+            jobs = [dict(r) for r in db.execute('SELECT id,device,kind,status,created,result FROM jobs WHERE '+job_condition+' ORDER BY created DESC LIMIT 100',params)]
+            fleet = dict(db.execute('SELECT count(*) AS records,coalesce(sum(revoked=0),0) AS active,coalesce(sum(revoked=0 AND seen>?),0) AS online FROM devices WHERE '+device_condition,[time.time()-90,*params]).fetchone())
+            pending = db.execute("SELECT count(*) FROM jobs WHERE status IN ('queued','running') AND "+job_condition,params).fetchone()[0]
+            audit = [dict(r) for r in db.execute('SELECT * FROM audit ORDER BY id DESC LIMIT 100')] if include_audit and device_ids is None else []
         return {'devices':devices,'jobs':jobs,'audit':audit,'time':time.time(),'pending':pending,'fleet':fleet}
 
 def inventory_input(body):
@@ -151,9 +153,9 @@ class Handler(BaseHTTPRequestHandler):
         if not value.startswith('Bearer ') or len(value)>512:
             raise PermissionError('Authentication required')
         return value[7:]
-    def access(self, permission):
+    def access(self, permission, device=None):
         principal=identity.authenticate(self.server.store,self.server.admin_token,self.bearer())
-        return identity.require(principal,permission)
+        return identity.require(principal,permission,device)
     def do_GET(self):
         try:
             url = urlsplit(self.path)
@@ -168,9 +170,9 @@ class Handler(BaseHTTPRequestHandler):
                 permission={'audit':'audit.read','jobs':'jobs.read','enrollments':'enrollments.read','devices':'inventory.read','credentials':'credentials.read'}.get(kind)
                 if permission is None:
                     raise ValueError('Unknown history collection')
-                self.access(permission)
+                principal=self.access(permission)
                 cursor = query.get('cursor',[None])[0]
-                return self.reply(200,page(self.server.store,kind,int(query.get('limit',['50'])[0]),int(cursor) if cursor is not None else None))
+                return self.reply(200,page(self.server.store,kind,int(query.get('limit',['50'])[0]),int(cursor) if cursor is not None else None,device_ids=principal.get('device_ids')))
             if path=='/api/health':
                 self.access('health.read')
                 return self.reply(200,health(self.server.store,self.server.started))
@@ -183,7 +185,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(200,identity.listing(self.server.store,int(cursor) if cursor is not None else None))
             if path=='/api/dashboard':
                 principal=self.access('inventory.read')
-                data=self.server.store.snapshot(include_audit='audit.read' in principal['permissions'])
+                data=self.server.store.snapshot(include_audit='audit.read' in principal['permissions'],device_ids=principal.get('device_ids'))
                 return self.reply(200,{**data,'identity':principal})
             assets = {'/':('index.html','text/html; charset=utf-8'),'/app.js':('app.js','text/javascript'),'/style.css':('style.css','text/css')}
             if path in assets:
@@ -225,7 +227,8 @@ class Handler(BaseHTTPRequestHandler):
                 permissions={'/api/enrollments':'enrollments.write','/api/enrollments/revoke':'enrollments.write','/api/jobs':'jobs.write','/api/revoke':'devices.revoke','/api/credentials':'credentials.write','/api/credentials/revoke':'credentials.write'}
                 if path not in permissions:
                     return self.reply(404,{'error':'Not found'})
-                actor=self.access(permissions[path])['id']
+                target=str(body.get('device','')) if path in ('/api/jobs','/api/revoke') else None
+                actor=self.access(permissions[path],target)['id']
                 if path=='/api/enrollments':
                     result = store.enrollment(actor)
                 elif path=='/api/enrollments/revoke':
@@ -235,7 +238,7 @@ class Handler(BaseHTTPRequestHandler):
                 elif path=='/api/revoke':
                     result = store.revoke(str(body.get('device','')),actor)
                 elif path=='/api/credentials':
-                    result = identity.issue(store,body.get('name'),body.get('role'),body.get('hours'),actor)
+                    result = identity.issue(store,body.get('name'),body.get('role'),body.get('hours'),actor,body.get('device_ids'))
                 elif path=='/api/credentials/revoke':
                     result = identity.revoke(store,str(body.get('id','')),actor)
             self.reply(200,result)

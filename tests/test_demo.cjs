@@ -19,3 +19,11 @@ test('demo lifecycle changes only mock state and reset restores it',async()=>{
  await assert.rejects(()=>app.request('ssh',{}),/not available/);
 });
 test('mock snapshots cannot mutate transport state',async()=>{const app=demo();const data=await app.request('dashboard');data.devices.splice(0);assert.equal((await app.request('dashboard')).devices.length,3);});
+
+test('demo credential scopes validate selected devices and forbid scoped administrators',async()=>{
+ const app=demo(); const device=(await app.request('dashboard')).devices[0].id;
+ const scoped=await app.request('credentials',{name:'Selected reader',role:'viewer',hours:1,device_ids:[device]});
+ assert.deepEqual(scoped.device_ids,[device]);
+ const listing=await app.request('credentials');assert.deepEqual(listing.credentials[0].device_ids,[device]);
+ for(const change of [{device_ids:[]},{device_ids:['unknown']},{device_ids:[device,device]},{role:'administrator'}]) await assert.rejects(()=>app.request('credentials',{name:'Invalid scope',role:'viewer',hours:1,device_ids:[device],...change}),/Select active/);
+});

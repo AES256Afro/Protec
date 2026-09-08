@@ -1,5 +1,5 @@
 """Transactional, forward-only schema upgrades with explicit compatibility checks."""
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 TABLES = {
     'enrollments': 'hash TEXT PRIMARY KEY, expires REAL, used INTEGER DEFAULT 0',
     'devices': 'id TEXT PRIMARY KEY, hash TEXT UNIQUE, inventory TEXT, seen REAL, revoked INTEGER DEFAULT 0',
@@ -25,7 +25,7 @@ def version(connection):
 def validate_schema(connection):
     current = version(connection)
     tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    required_tables = {**COLUMNS, **({'credentials':CREDENTIAL_COLUMNS} if current>=2 else {})}
+    required_tables = {**COLUMNS, **({'credentials':CREDENTIAL_COLUMNS | ({'device_ids'} if current>=3 else set())} if current>=2 else {})}
     if not required_tables.keys() <= tables:
         raise ValueError('Source is not a complete Protec database')
     for table, required in required_tables.items():
@@ -55,4 +55,7 @@ def migrate(connection):
     if current<2:
         connection.execute(f'CREATE TABLE credentials ({CREDENTIAL_SCHEMA})')
         connection.execute('PRAGMA user_version=2')
+    if current<3:
+        connection.execute('ALTER TABLE credentials ADD COLUMN device_ids TEXT')
+        connection.execute('PRAGMA user_version=3')
     validate_schema(connection)

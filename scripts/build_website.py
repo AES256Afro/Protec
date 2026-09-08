@@ -8,6 +8,8 @@ import subprocess
 ROOT=Path(__file__).resolve().parent.parent
 OUT=ROOT/'website'/'dist'
 revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
+if subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).strip():
+    revision += '-dirty'
 version=(ROOT/'VERSION').read_text().strip()
 OUT.mkdir(parents=True,exist_ok=True)
 (OUT/'demo').mkdir(exist_ok=True)

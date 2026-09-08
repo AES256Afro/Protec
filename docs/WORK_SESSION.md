@@ -50,3 +50,9 @@ BigBox Docker access works through the bigbox SSH account. Adding a Tailscale Se
 - Existing heartbeat automation updated to require BigBox deployment, optional BoxPilot/independent installation, and public demo parity after shipped milestones. It remains active with no cutoff.
 
 Next: complete the administrator-dependent HTTPS/catalog step, transfer the final local state without losing either side's writes, point the Mac agent to the private BigBox HTTPS origin and verify check-in/refresh, then continue M3/M4. Never call the complete infrastructure roadmap finished based on this hosting milestone.
+
+## Device scope milestone, September 8
+
+Implemented M3 device scopes for viewer/operator credentials: select 1-100 active device IDs at issuance, enforce targets on inventory refresh, filter dashboard counts and job/device history before paging, and deny fleet-level health/administration to scoped credentials. Administrator credentials retain fleet scope. Invalid stored scopes fail authentication. Schema 3 preserves existing schema-2 fleet credentials. The demo credential form and mock validation mirror the shipped form.
+
+Local validation: 49 Python tests, 5 JavaScript tests, exported demo DOM scoped-issuance checks, and a migration of a consistent live database copy preserving bootstrap identity and its device record. The original Mac database and running agent remain on the prior local service until the pending HTTPS cutover. Version 0.3.0 image/site/catalog publication and BigBox upgrade are the next release checks for this checkpoint. Do not treat this as completion of all M3 identity work: SSO/MFA, protected secret storage and recoverable rotation remain.
