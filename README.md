@@ -67,7 +67,7 @@ Tests exercise concurrent token consumption, expiration, hashed credential stora
 
 Local credentials and the SQLite database are under `.protec/`, ignored by Git. Newly created files use restrictive POSIX permissions. Device credentials are plaintext in the local agent state file, protected by file permissions; an OS credential store remains planned. The browser uses a bearer credential without cookies and the API rejects cross-origin writes. The server has a fixed static-asset allowlist and a restrictive content security policy.
 
-This prototype uses Python's development HTTP server. It has one administrator identity, no MFA, no production rate limiting, no credential rotation, no device attestation, and no tamper-resistant audit export. The SQLite audit table can be modified by the server's local administrator. A lost enrollment response consumes the token and may leave an orphan device record; revoke that record and enroll again. The local `.protec` directory should be owned by the user running the server, and should never be shared across untrusted users.
+This prototype uses Python's development HTTP server. It has a local administrator credential and expiring service credentials with viewer/operator/administrator roles. It has no SSO/MFA, no device-specific access scopes, no production rate limiting, no automatic credential rotation, no device attestation, and no tamper-resistant audit export. The SQLite audit table can be modified by the server's local administrator. A lost enrollment response consumes the token and may leave an orphan device record; revoke that record and enroll again. The local `.protec` directory should be owned by the user running the server, and should never be shared across untrusted users.
 
 See [the delivery roadmap](docs/ROADMAP.md) for the next implementation slices and [architecture](docs/ARCHITECTURE.md) for management and privilege boundaries.
 
@@ -76,3 +76,5 @@ Database snapshots and recovery instructions: [Backup and staged restore](docs/B
 History, readiness checks and conservative retention: [Data operations](docs/DATA_OPERATIONS.md).
 
 Package adapter scope and limits: [Package inventory](docs/PACKAGES.md).
+
+Service credential roles, issuance, expiry and revocation: [Identity foundation](docs/IDENTITY.md).

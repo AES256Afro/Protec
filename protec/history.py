@@ -3,6 +3,7 @@ from protec.migrations import validate_schema
 import time
 
 PROJECTIONS = {
+    'credentials':'id,name,role,created,expires,revoked,issued_by',
     'audit':'id,time,actor,action,target',
     'jobs':'id,device,kind,status,created,result',
     'enrollments':'hash AS id,expires,used',
@@ -34,6 +35,8 @@ def page(store,kind,limit=50,cursor=None):
         row.pop('position')
         if kind=='devices':
             row['inventory']=json.loads(row['inventory'])
+        elif kind=='credentials':
+            row['status']='revoked' if row.pop('revoked') else 'expired' if row['expires']<=now else 'active'
         elif kind=='enrollments':
             used=row.pop('used')
             row['status']='revoked' if used==-1 else 'used' if used==1 else 'expired' if row['expires']<=now else 'active'

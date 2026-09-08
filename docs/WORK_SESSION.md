@@ -11,17 +11,22 @@ The earlier four-hour schedules are superseded. Continue independent work until 
 
 ## Current work
 
-Expanded roadmap published with distinct enrollment, platform data, identity, execution, policy, package, configuration, patch, log, network, WireGuard, SSH and native-agent milestones. M1 enrollment-token management is implemented: administrator-only metadata listing and unused-token revocation, with API tests and browser verification. Local suite: 11 Python tests plus 2 JavaScript tests passed. M2 backup/staged-restore slice is now implemented; versioned migrations are now implemented; pagination, health reporting and conservative retention are implemented. M2 implementation is complete: backup/restore, transactional migrations, bounded history pages, readiness reporting and conservative retention. Browser checks loaded 125 audit records across three pages and verified the final paging button disabled. M6 read-only package inventory is also implemented as a preparatory slice; package installation/update/removal remain pending M3/M4.
+- M0/M1: local inventory, enrollment lifecycle and MacBook onboarding delivered.
+- M2: backup/staged restore, transactional migrations, paginated history, readiness and conservative retention delivered. Audit retention is intentionally preserved; production resilience remains M15.
+- M6 preparation: read-only Homebrew formula and installed Debian package inventory delivered at d29ccac with hosted CI passing. Last local package report contained 34 formulae. Package mutation awaits M3/M4.
+- M3 first slice: local service credentials with viewer/operator/administrator roles, 1-720 hour expiry, revocation, metadata pagination and actor attribution implemented. UI hides actions outside the role; server independently rejects unauthorized routes. Bootstrap token remains intact. SSO/MFA, device-specific scopes, rotation recovery and protected secret stores remain.
 
-## Next checkpoints
+## Latest verification
 
-1. M1 published at b7d1cf6 with hosted CI passing.
-2. M2 backup/staged restore implemented and local live database snapshot created. Four recovery tests cover credential/job preservation, committed WAL content, destination protection, and invalid/newer databases. Versioned schema migration implemented and tested against a copy of the live database; live service upgraded to schema 1 after taking pre-schema-v1.db backup. Pagination, readiness reporting and conservative retention added; M2 published at 78c0b59 with passing hosted CI.
-3. Package inventory implemented for Homebrew formulae and installed Debian packages. Live MacBook report and browser displayed 34 packages; no packages modified. Local suite is now 30 Python tests and 2 JavaScript tests. Check hosted CI for this checkpoint.
-4. Next: M3 identity and scoped credential foundation, then M4 typed execution controls. Independent policy/configuration preview and network/SSH/WireGuard read-only slices can proceed while external SSO or native-device dependencies remain.
+- 34 Python tests plus 2 JavaScript tests passed locally. Tests exercise role escalation denials, device/service identity separation, expiry/revocation, safe metadata and pagination.
+- Browser verified viewer restrictions, administrator Access view, test credential issuance and clearing its one-time secret on close. Credential tests used a disposable database, not the live workspace.
+- Pre-schema-v2.db backup created. Copy of the live schema-1 database upgraded to schema 2 with device records intact and no issued service credentials. Live control plane restarted on schema 2; bootstrap administrator and device check-ins verified. No live service credentials issued. Verify latest exact-commit CI at the next checkpoint.
+- Current foreground control plane and agent use .protec; inspect process ids before restarting. The agent reports packages every five minutes or upon an inventory refresh.
 
-There is no deadline. Stop only when the roadmap acceptance criteria are satisfied, the user cancels, or a concrete dependency prevents further meaningful independent progress. Pause the continuation automation on completion or such an impasse. Do not represent preparation as production readiness. Report meaningful completions or blockers, not unchanged polling.
+## Next work
 
-Latest local suite: 30 Python tests and 2 JavaScript tests passing. Database backups are ignored local artifacts under .protec; no restore cutover performed. The current service has been restarted to apply schema migration version 1.
+1. Live schema-2 verification completed; publish this checkpoint and verify hosted CI.
+2. Continue M3: device-specific authorization scopes and recoverable credential rotation. Keep role/target checks centralized; avoid parallel implementations per feature.
+3. Continue M4 typed, signed, bounded execution. M5 policy/configuration previews and read-only network/SSH/WireGuard inventory can proceed while external identity/native dependencies remain.
 
-Current control plane and foreground agent were restarted after the package inventory update. Agent refreshes package reports every five minutes or on inventory refresh. Verify processes before any restart; process IDs are not stable.
+There is no deadline. Continue all meaningful independent milestones. Only pause for completion, user cancellation, or a concrete external dependency after independent work is exhausted. Do not mark the full M3 or platform complete based on this local credential foundation.

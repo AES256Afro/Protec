@@ -42,3 +42,9 @@ Not yet validated: a persistent Linux service, a separate remote Linux device, p
 - Thirty Python tests and two JavaScript regression tests passed locally. Collector tests cover malformed output, partial package lifecycle states, output/time limits, truncation, invalid reports, cached scans, and forced refresh.
 - The native Homebrew query on the development Mac returned 34 formulae. The browser displayed all 34 records, collection status and time, and a working empty search state.
 - Current server and foreground agent restarted with package support. Linux CI exercises its native dpkg collector through the HTTP agent round-trip test. Package mutation, casks, security advisory matching and remote Linux production management remain unimplemented.
+
+## M3 local role credentials
+
+- Thirty-four Python tests and two JavaScript tests passed locally. HTTP tests verify role denials, operator refresh permission, audit attribution, device/service separation, expiry/revocation, invalid input and credential pagination.
+- Browser verified viewer restrictions and administrator credential listing/issuance. The issuance dialog cleared its secret after closing. These tests used a disposable control plane.
+- A copy of the live schema-1 database upgraded to schema 2 while preserving its device records. A pre-schema-v2 backup was created before local restart.
