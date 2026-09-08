@@ -8,16 +8,16 @@ The Access view lets an administrator issue a named credential with a role and a
 | Operator | Viewer permissions plus queue inventory refreshes |
 | Administrator | Operator permissions plus enrollment/token management, device revocation, audit history, and service credential issuance/revocation |
 
-Roles apply across the entire local fleet. Device-specific scopes, user identity federation, SSO/MFA, rotation with recovery, and OS secret-store integration are not yet implemented. This is the first M3 slice, not completion of M3 or a production identity system.
+Roles apply to the whole fleet unless a viewer/operator credential has an explicit device scope. Scoped credentials omit fleet-wide health access. User identity federation, SSO/MFA, rotation with recovery, and OS secret-store integration remain future M3 work.
 
 The server enforces permissions on each HTTP route. Hiding controls in the dashboard is only presentation. Issued service credentials cannot authenticate as device agents or use device heartbeat/completion routes. Device credentials cannot access management routes. Viewer/operator dashboard responses omit audit events; the protected audit, enrollment and access-history routes return 403 to those roles.
 
 ## API
 
-- `POST /api/credentials` with `name`, `role`, and integer `hours`: administrator only; returns `id`, `token`, `name`, `role`, and `expires` once.
+- `POST /api/credentials` with `name`, `role`, integer `hours`, and optional `device_ids`: administrator only; returns `id`, `token`, `name`, `role`, and `expires` once.
 - `GET /api/credentials`: administrator-only metadata plus `next_cursor`. Supply `cursor` to retrieve older credentials.
 - `POST /api/credentials/revoke` with `id`: administrator only. Subsequent requests using that token are rejected. An already authorized in-flight request may finish.
-- `GET /api/dashboard`: includes the authenticated identity name, id, role and permissions. Never includes bearer secrets.
+- `GET /api/dashboard`: includes the authenticated identity name, id, role, permissions and device scope. Never includes bearer secrets.
 
 There is no plaintext credential recovery endpoint. If an issuance response is lost, identify and revoke the orphan credential in Access, then issue a replacement. Names are labels, not unique account identifiers; audit events reference the stable credential id. Authorized management actions record that id as actor. Authentication failures are rejected but are not yet recorded as rate-limited security events.
 
