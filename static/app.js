@@ -4,6 +4,7 @@ const $ = id => document.getElementById(id);
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const date = value => new Date(value * 1000).toLocaleString();
 async function api(path, body) {
+  if (globalThis.protecDemo) return globalThis.protecDemo.request(path,body);
   const response = await fetch('/api/' + path, {method: body === undefined ? 'GET' : 'POST', headers: {'Authorization':'Bearer '+credential,'Content-Type':'application/json'}, ...(body === undefined ? {} : {body:JSON.stringify(body)})});
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Request failed');
@@ -51,7 +52,7 @@ $('login-form').addEventListener('submit', async event => {
   const token = $('token').value.trim();
   if (!/^[A-Za-z0-9_-]{32,128}$/.test(token)) {
     credential = '';
-    notify('Paste the token file contents, not the file path or masked dots. On your Mac, run the copy command shown above, then paste here.');
+    notify('Paste the token file contents, not the file path or masked dots. Use your deployment’s token retrieval instructions, then paste here.');
     $('token').focus();
     return;
   }
@@ -206,3 +207,14 @@ $('access-list').onclick=async event=>{
     notify('Service credential revoked.');
   } catch(error) {notify(error.message);button.disabled=false;}
 };
+
+if (location.origin) $('agent-command').textContent = 'python3 -m protec.agent --enroll --server ' + location.origin;
+if (globalThis.protecDemo) {
+  credential = 'demo';
+  $('login').hidden=true;
+  $('content').hidden=false;
+  $('lock').hidden=false;
+  $('lock').textContent='Reset demo';
+  $('agent-command').textContent='Demo only. No device connects or receives commands.';
+  refresh().catch(error=>notify(error.message));
+}

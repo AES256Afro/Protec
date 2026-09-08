@@ -2,14 +2,16 @@
 
 A Linux-first endpoint management project, with Windows and macOS planned next. The goal is a dashboard for enrollment, security posture, logs, configurations, patches, and audited remote access.
 
-**Version 0.1 is a runnable local inventory prototype.** It implements enrollment and device tracking. It does not yet enforce security policies, collect system logs, install patches, deploy configurations, or open remote sessions.
+**Version 0.2 is a self-hosted inventory pilot.** It supports independent Docker Compose deployment, an optional BoxPilot catalog install, enrollment, package inventory, and role-based credentials. It does not yet enforce security policies, collect system logs, install patches, deploy configurations, or open remote sessions.
+
+Website: [foragefournuts.com](https://foragefournuts.com) · [Interactive mock demo](https://foragefournuts.com/demo/) · [Independent and BoxPilot deployment](docs/DEPLOYMENT.md)
 
 ## Run locally on your MacBook or Linux
 
 Requires Python 3.11 or newer. No third-party packages are required.
 
 ```sh
-cd /Users/chris/Projects/Protec
+cd Protec
 python3 -m protec.server
 ```
 
@@ -18,7 +20,7 @@ Open http://127.0.0.1:8765. Paste the token from `.protec/admin-token` into the 
 On this Mac, copy the administrator token without displaying it:
 
 ```sh
-pbcopy < /Users/chris/Projects/Protec/.protec/admin-token
+pbcopy < .protec/admin-token
 ```
 
 Paste into the dashboard and select **Connect**. Paste the actual token contents, not the file path or masked dots. Malformed input is rejected with guidance before sending a network request.
@@ -36,7 +38,7 @@ Subsequent runs use `python3 -m protec.agent`. Use `--once` for one check-in, an
 
 The inventory agent runs as the user who starts it and reports whether that user has administrator privileges. Root is not required for this slice. It does not install a service, elevate privileges, enable SSH, or alter the host. POSIX enrollment supports Linux and local macOS inventory testing. macOS inventory uses its product name and version. The privilege field describes the running process: a normal Terminal session reports standard privileges even if your macOS account belongs to the administrators group. Windows enrollment is intentionally blocked until protected credential storage is implemented.
 
-The control plane binds only to loopback. This is for testing on a single host. Do not expose this prototype as a production service. The agent accepts HTTPS origins for future deployments, but reverse-proxy support and a hardened remote deployment have not been implemented or validated.
+The development server binds only to loopback. For a persistent server, use the non-root container with its Gunicorn server and an explicitly configured HTTPS origin. See [deployment instructions](docs/DEPLOYMENT.md) for Docker Compose, BoxPilot, proxy setup, backup, and upgrades. Full enterprise production readiness remains roadmap work.
 
 ## Implemented
 
@@ -49,7 +51,7 @@ The control plane binds only to loopback. This is for testing on a single host. 
 - Audit events for enrollment-token creation, enrollment, refresh, completion, and revocation.
 - Dashboard inventory search, connection counts, action status, and audit history.
 - Read-only Homebrew formula and Debian package inventory, with bounded reports and collection status.
-- Explicit empty states and capability availability. No seeded or fabricated device records.
+- Explicit empty states and capability availability. The real portal starts empty; the public demo uses explicitly labeled mock data.
 
 Connection status means a check-in was received within 90 seconds. It is not a security compliance verdict. Inventory and privilege data are agent-reported, not attested. The main device, action and audit views show the latest 100 records. The History view loads older device, job, token and audit records in pages; fleet counters cover the full database. Pending action count includes all queued and running jobs.
 

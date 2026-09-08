@@ -1,0 +1,9 @@
+*
+!Dockerfile
+!requirements.txt
+!protec/
+!protec/**
+!static/
+!static/**
+**/__pycache__
+**/*.pyc
