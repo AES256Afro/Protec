@@ -39,11 +39,12 @@ The default image runs as UID/GID `10001:10001`. Compose uses a named persistent
 
 Update BoxPilot to **1.116.0 or later**, which includes `catalog/protec.yaml`, then open **App catalog**, search **Protec**, and select **Install**.
 
-1. Choose **Tailnet** access, or prepare an HTTPS reverse proxy on the host.
+1. Plan a private Tailscale HTTPS address, or prepare an HTTPS reverse proxy on the host.
 2. Enter the exact **Portal HTTPS origin**, including the chosen port. Default port: 8765.
 3. Keep the generated **Administrator token**. If replacing it, use 32 to 128 letters, digits, underscores, or hyphens.
 4. Review the install and wait for its health check.
-5. Open the app's sign-in details, copy the generated token, and connect to Protec.
+5. Publish its loopback port through Tailscale Serve using the command above, or point your HTTPS reverse proxy at that port. An existing mapping to the same port can stay in place.
+6. Open the app's sign-in details, copy the generated token, and connect to Protec.
 
 BoxPilot manages the data directory and uses the same published image as independent installs. Its `PROTEC_ADMIN_TOKEN` environment value is authoritative: changing it and restarting the app replaces bootstrap access immediately. In that mode, a pre-existing `/data/admin-token` file is ignored. Named service credentials and device credentials are separate and are not rotated by that setting.
 
