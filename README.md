@@ -48,6 +48,7 @@ The control plane binds only to loopback. This is for testing on a single host. 
 - Job ownership checks, device revocation, and cancellation of pending work.
 - Audit events for enrollment-token creation, enrollment, refresh, completion, and revocation.
 - Dashboard inventory search, connection counts, action status, and audit history.
+- Read-only Homebrew formula and Debian package inventory, with bounded reports and collection status.
 - Explicit empty states and capability availability. No seeded or fabricated device records.
 
 Connection status means a check-in was received within 90 seconds. It is not a security compliance verdict. Inventory and privilege data are agent-reported, not attested. The main device, action and audit views show the latest 100 records. The History view loads older device, job, token and audit records in pages; fleet counters cover the full database. Pending action count includes all queued and running jobs.
@@ -73,3 +74,5 @@ See [the delivery roadmap](docs/ROADMAP.md) for the next implementation slices a
 Database snapshots and recovery instructions: [Backup and staged restore](docs/BACKUP_RESTORE.md).
 
 History, readiness checks and conservative retention: [Data operations](docs/DATA_OPERATIONS.md).
+
+Package adapter scope and limits: [Package inventory](docs/PACKAGES.md).

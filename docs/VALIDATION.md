@@ -36,3 +36,9 @@ Not yet validated: a persistent Linux service, a separate remote Linux device, p
 
 - Twenty-five Python tests and two JavaScript tests passed locally. Retention tests preserve active jobs, device credentials and audit history, and refuse deletion if the backup fails. No live retention apply was performed.
 - Browser loaded 125 test audit records across pages of 50, 50 and 25, and disabled further paging. Readiness showed schema version and accurate record counts.
+
+## Read-only package inventory
+
+- Thirty Python tests and two JavaScript regression tests passed locally. Collector tests cover malformed output, partial package lifecycle states, output/time limits, truncation, invalid reports, cached scans, and forced refresh.
+- The native Homebrew query on the development Mac returned 34 formulae. The browser displayed all 34 records, collection status and time, and a working empty search state.
+- Current server and foreground agent restarted with package support. Linux CI exercises its native dpkg collector through the HTTP agent round-trip test. Package mutation, casks, security advisory matching and remote Linux production management remain unimplemented.
