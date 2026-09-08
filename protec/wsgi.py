@@ -57,6 +57,7 @@ def create_app(data=None, public_url=None, admin_token=None):
     directory = Path(data or os.environ.get('PROTEC_DATA','/data'))
     origin = public_origin(public_url or os.environ.get('PROTEC_PUBLIC_URL','http://127.0.0.1:8765'))
     directory.mkdir(parents=True,mode=0o700,exist_ok=True)
+    directory.chmod(0o700)
     token_path = directory/'admin-token'
     token = admin_token or os.environ.get('PROTEC_ADMIN_TOKEN')
     if not token:

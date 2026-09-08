@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 from protec.agent import inventory
 from protec.database import copy_database
-from protec.migrations import TABLES, migrate, validate_schema
+from protec.migrations import TABLES, SCHEMA_VERSION, CREDENTIAL_SCHEMA, migrate, validate_schema
 from protec.server import Store
 
 class MigrationTests(unittest.TestCase):
@@ -34,16 +34,32 @@ class MigrationTests(unittest.TestCase):
             self.assertEqual(upgraded.identify(device['credential']),device['id'])
             self.assertEqual(upgraded.snapshot()['pending'],1)
             with upgraded.connect() as db:
-                self.assertEqual(validate_schema(db),2)
+                self.assertEqual(validate_schema(db),SCHEMA_VERSION)
+    def test_schema_two_upgrade_preserves_existing_fleet_credentials(self):
+        from protec.identity import authenticate, token_hash
+        connection=self.legacy()
+        connection.execute(f'CREATE TABLE credentials ({CREDENTIAL_SCHEMA})')
+        connection.execute("INSERT INTO credentials VALUES (?,?,?,?,?,?,?,?)",('reader',token_hash('b'*43),'Reader','viewer',1,9999999999,0,'owner'))
+        connection.execute('PRAGMA user_version=2')
+        connection.commit()
+        connection.close()
+        copy_database(self.path,Path(self.temp.name)/'before-v3.db')
+        upgraded=Store(self.path)
+        principal=authenticate(upgraded,'a'*43,'b'*43)
+        self.assertIsNone(principal['device_ids'])
+        self.assertEqual(principal['role'],'viewer')
+        with upgraded.connect() as db:
+            self.assertEqual(validate_schema(db),3)
+
     def test_future_database_refused_without_creating_tables(self):
         connection = sqlite3.connect(self.path)
-        connection.execute('PRAGMA user_version=3')
+        connection.execute(f'PRAGMA user_version={SCHEMA_VERSION+1}')
         connection.close()
         with self.assertRaises(ValueError):
             Store(self.path)
         connection = sqlite3.connect(self.path)
         try:
-            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0],3)
+            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0],SCHEMA_VERSION+1)
             self.assertEqual(connection.execute('SELECT name FROM sqlite_master').fetchall(),[])
         finally:
             connection.close()

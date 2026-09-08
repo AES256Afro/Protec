@@ -1,6 +1,6 @@
 # Deploy Protec
 
-Protec 0.2 is a private fleet inventory pilot. It can run independently of BoxPilot. The image contains the control plane and dashboard, with SQLite data under `/data`. Agents connect outbound over HTTPS. The portal does not need root, a Docker socket, or host network access.
+Protec 0.3 is a private fleet inventory pilot. It can run independently of BoxPilot. The image contains the control plane and dashboard, with SQLite data under `/data`. Agents connect outbound over HTTPS. The portal does not need root, a Docker socket, or host network access.
 
 ## Independent Docker Compose install
 

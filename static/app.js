@@ -14,16 +14,19 @@ const can = permission => snapshot?.identity?.permissions.includes(permission) |
 function notify(message) { $('notice').textContent = message; }
 function render() {
   if (!snapshot) return;
-  $('identity-label').textContent = `${snapshot.identity.name} · ${snapshot.identity.role}`;
+  $('identity-label').textContent = `${snapshot.identity.name} · ${snapshot.identity.role} · ${snapshot.identity.device_ids ? snapshot.identity.device_ids.length+' selected devices' : 'Whole fleet'}`;
   $('enroll').disabled = !can('enrollments.write');
   $('empty-enroll').hidden = !can('enrollments.write');
-  for (const [view,permission] of [['tokens','enrollments.read'],['audit','audit.read'],['access','credentials.read']]) {
+  for (const [view,permission] of [['tokens','enrollments.read'],['audit','audit.read'],['access','credentials.read'],['health','health.read']]) {
     document.querySelector(`[data-view="${view}"]`).hidden = !can(permission);
   }
   for (const [kind,permission] of [['audit','audit.read'],['enrollments','enrollments.read']]) {
     document.querySelector(`#history-kind option[value="${kind}"]`).disabled = !can(permission);
   }
   if (!can('audit.read') && ['audit','enrollments'].includes($('history-kind').value)) $('history-kind').value='devices';
+  $('fleet-label').textContent = snapshot.identity.device_ids ? 'Enrolled devices in scope' : 'Enrolled devices';
+  const selections=new Set(Array.from($('access-devices').selectedOptions || [],option=>option.value));
+  $('access-devices').innerHTML=snapshot.devices.filter(device=>!device.revoked).map(device=>`<option value="${escape(device.id)}" ${selections.has(device.id)?'selected':''}>${escape(device.inventory.hostname)} · ${escape(device.id)}</option>`).join('');
   $('total').textContent = snapshot.fleet.active;
   $('online').textContent = snapshot.fleet.online;
   $('offline').textContent = snapshot.fleet.active - snapshot.fleet.online;
@@ -171,7 +174,7 @@ async function loadAccess(reset=true) {
   $('access-more').disabled=true;
   try {
   const result=await api('credentials'+(!reset && accessCursor?'?cursor='+accessCursor:''));
-  const entries=result.credentials.map(item=>`<div class="event"><div><strong>${escape(item.name)}</strong><p>${escape(item.role)} · Expires ${escape(date(item.expires))}</p><p>${escape(item.id)}</p></div><div><span class="badge ${item.status==='active'?'green':''}">${escape(item.status)}</span> ${item.status==='active'?`<button data-access-revoke="${escape(item.id)}">Revoke credential</button>`:''}</div></div>`).join('');
+  const entries=result.credentials.map(item=>`<div class="event"><div><strong>${escape(item.name)}</strong><p>${escape(item.role)} · ${item.device_ids?escape(item.device_ids.length+' selected devices: '+item.device_ids.join(', ')):'Whole fleet'} · Expires ${escape(date(item.expires))}</p><p>${escape(item.id)}</p></div><div><span class="badge ${item.status==='active'?'green':''}">${escape(item.status)}</span> ${item.status==='active'?`<button data-access-revoke="${escape(item.id)}">Revoke credential</button>`:''}</div></div>`).join('');
   if(reset) $('access-list').innerHTML=entries || '<p>No service credentials issued. Your local administrator token remains available in its protected file.</p>';
   else $('access-list').insertAdjacentHTML('beforeend',entries);
   accessCursor=result.next_cursor;
@@ -183,9 +186,9 @@ $('access-form').addEventListener('submit',async event=>{
   const button=$('access-create');
   button.disabled=true;
   try {
-    const result=await api('credentials',{name:$('access-name').value.trim(),role:$('access-role').value,hours:Number($('access-hours').value)});
+    const result=await api('credentials',{name:$('access-name').value.trim(),role:$('access-role').value,hours:Number($('access-hours').value),device_ids:$('access-scope').value==='selected'?Array.from($('access-devices').selectedOptions,option=>option.value):null});
     $('issued-access').value=result.token;
-    $('issued-access-description').textContent=`${result.name} · ${result.role} · Expires ${date(result.expires)}. Save this credential securely. Closing this dialog clears its value from the page.`;
+    $('issued-access-description').textContent=`${result.name} · ${result.role} · ${result.device_ids?result.device_ids.length+' selected devices':'Whole fleet'} · Expires ${date(result.expires)}. Save this credential securely. Closing this dialog clears its value from the page.`;
     $('access-dialog').showModal();
     $('access-name').value='';
     await loadAccess();
@@ -218,3 +221,13 @@ if (globalThis.protecDemo) {
   $('agent-command').textContent='Demo only. No device connects or receives commands.';
   refresh().catch(error=>notify(error.message));
 }
+
+function updateScopeForm() {
+  const admin=$('access-role').value==='administrator';
+  if(admin) $('access-scope').value='fleet';
+  $('access-scope').disabled=admin;
+  $('access-devices-label').hidden=$('access-scope').value!=='selected';
+  $('access-devices').required=$('access-scope').value==='selected';
+}
+$('access-role').onchange=updateScopeForm;
+$('access-scope').onchange=updateScopeForm;
