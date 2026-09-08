@@ -122,3 +122,9 @@ Publication and disposable published-container validation are next. Live read-on
 - Found the detached Mac inventory agent no longer running during final freshness verification (last check-in about three hours old). Restarted it with the unchanged `.protec/agent.json` and log `.protec/agent-bigbox.log`, PID 20150 at this checkpoint. Verify the fresh remote check-in before claiming restored reporting. Native launchd/systemd installation is still not implemented.
 
 Continue independent M4 typed/versioned job and receipt foundations while the owner-managed deployment step is pending. Preserve current network and credentials, and do not repeat pending approval questions each heartbeat. M3 identity federation/native storage and the full platform roadmap remain incomplete.
+
+### Rotation checkpoint final verification
+
+BoxPilot CI 34286479183 passed on its second attempt without source changes; hosted release and install smoke also passed. Both repositories' main/tag refs match the release commits recorded above. The published Protec manifest was inspected and contains Linux amd64 and arm64 images. Protec deployment-notes commit `50f2803` passed hosted Checks 34286853331.
+
+The restarted Mac agent is running and remote read-only verification found a fresh check-in 22 seconds old. Production remains schema 3 on the healthy 0.3.0 image. The existing continuation automation remains active; the pending owner rollout is specifically BoxPilot **1.116.2**, followed by its managed Protec **0.4.0** update and exact-revision public demo publication. The earlier owner-bootstrap CI timeout was transient on rerun; no test timeout or product behavior was changed to bypass it.
