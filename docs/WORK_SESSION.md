@@ -75,3 +75,9 @@ Next independent M3 work: recoverable credential rotation with bounded overlap, 
 - Rechecked the persistent Protec container: healthy, readiness returned ok, image revision still `a28698122c1ee2e1ee50157ad0524f135377911e`. The public release check passed against that exact revision and actual served dashboard bytes. Private Tailscale port 8765 is still absent. The earlier HTTPS setup/cutover dependency remains; the BoxPilot update alone does not publish the independent container's port or migrate the Mac agent.
 - Deployment documentation now explicitly makes Docker Compose the default portal installation, BoxPilot optional, and native agents separate. Docs-only Protec commit `d6c1c81` passed hosted Checks 34262709529; it does not require replacing the matching 0.3.0 portal/demo release.
 - The existing every-ten-minute continuation automation remains active and already requires private deployment and matching public mock features after shipped milestones. Do not create a duplicate automation or repeatedly stage additional pending update jobs.
+
+### Owner update completed
+
+The user confirmed completion of the prepared update. Read-only SSH verification found BoxPilot 1.116.0 installed under `/opt/boxpilot` and its `catalog/protec.yaml` present with image 0.3.0. Protec's existing independent container remains healthy. The catalog delivery dependency is complete; no further BoxPilot upgrade approval is needed for this release.
+
+Private HTTPS remains a separate dependency: Tailscale Serve still has no port 8765 mapping, and SSH `sudo -n` requires interactive authentication. Ask only for the remaining command, `ssh -t bigbox@bigbox 'sudo tailscale serve --bg --https=8765 http://127.0.0.1:8765'`, then verify HTTPS before the previously documented safe database/agent cutover. Do not reinstall Protec from the catalog alongside the existing independent container on the same port.
