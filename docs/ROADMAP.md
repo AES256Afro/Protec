@@ -25,9 +25,9 @@ Each milestone owns one capability. Shared execution, identity, audit, schedulin
 | M14 | Agent lifecycle and native platforms: signed install/update, systemd/launchd/Windows service, Keychain/Windows protected storage, native MDM integrations | M3, M4 | Install, reboot persistence, upgrade, credential recovery and uninstall on each actual OS; Apple MDM separately verified. |
 | M15 | Fleet operations and resilience: API/CLI, notifications/webhooks, dashboards, reports, audit export, scaling and recovery | M2 through M14 incrementally | Backup restore, migration rollback, rate limiting, load tests, operator review and staged production deployment. |
 
-## Four-hour implementation window
+## Initial implementation priorities
 
-September 8, 2026, 11:30 AM to 3:36 PM America/Chicago (16:30 to 20:36:41 UTC), following the user's renewed four-hour request at 16:36:41 UTC. This is an implementation budget, not a claim that a production infrastructure platform can be completed in four hours.
+The user removed the time limit on September 8, 2026. Continue until the roadmap is implemented and its acceptance gates are verified, or concrete external dependencies prevent further independent work. The original four-hour ordering below is a sequence of priorities, not a deadline or a claim that the complete production platform fits into four hours.
 
 1. **First hour:** publish the expanded plan, complete M1 enrollment lifecycle and begin M2 migrations/backup validation.
 2. **Second hour:** package inventory adapters and evidence/freshness reporting. Prioritize read-only inventory; execution depends on M3/M4.

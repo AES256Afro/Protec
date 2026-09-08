@@ -20,4 +20,12 @@ This validates and creates a new database. It does not switch the running server
 
 Administrator tokens and agent state files are outside the database; back them up separately using protected storage. This command does not copy them or expose their values. Restoring an older snapshot can restore earlier token/device authorization state, including records revoked since that snapshot. Review and reapply revocations before permitting device traffic. Planned credential rotation/recovery controls will address that lifecycle explicitly.
 
-The current release supports the existing unversioned schema and reserves schema version 1. A versioned migration runner, retention policy and automated backup scheduling remain separate M2 work. Restore testing verifies the database and device authentication in an isolated test, not production cutover or OS service recovery.
+The server upgrades a valid legacy unversioned schema to version 1 transactionally on startup. A failed migration rolls back its changes. Newer schemas and incomplete tables are refused without automatic repair. Backups can preserve either supported schema version; restoring a legacy snapshot upgrades it when the server starts. Retention policy and automated backup scheduling remain separate M2 work. Restore testing verifies the database and device authentication in an isolated test, not production cutover or OS service recovery.
+
+Read-only integrity and schema validation:
+
+```sh
+python3 -m protec.database check --source .protec/protec.db
+```
+
+Always create a backup before upgrading the control plane. Test the new release against a copy of the existing database before restarting the live service. Database validation checks integrity and required columns; it does not attest that every stored application record is semantically valid.

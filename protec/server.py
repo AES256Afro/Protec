@@ -10,6 +10,7 @@ import sqlite3
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
+from protec.migrations import migrate
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -20,12 +21,7 @@ class Store:
     def __init__(self, path):
         self.path = str(path)
         with self.connect() as db:
-            db.executescript('''
-            CREATE TABLE IF NOT EXISTS enrollments (hash TEXT PRIMARY KEY, expires REAL, used INTEGER DEFAULT 0);
-            CREATE TABLE IF NOT EXISTS devices (id TEXT PRIMARY KEY, hash TEXT UNIQUE, inventory TEXT, seen REAL, revoked INTEGER DEFAULT 0);
-            CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, device TEXT, kind TEXT, status TEXT, created REAL, lease REAL, result TEXT);
-            CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY, time REAL, actor TEXT, action TEXT, target TEXT);
-            ''')
+            migrate(db)
     @contextmanager
     def connect(self):
         db = sqlite3.connect(self.path, timeout=10)
