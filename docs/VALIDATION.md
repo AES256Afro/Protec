@@ -19,3 +19,9 @@ Not yet validated: a persistent Linux service, a separate remote Linux device, p
 - macOS inventory now reports the product name and version. This remains inventory support, not full macOS management.
 - Browser reproduction with Unicode masked dots now shows actionable token-copy guidance instead of the fetch header exception.
 - Regression coverage added for malformed token rejection before network access and macOS product version reporting.
+
+## M1 enrollment lifecycle
+
+- Eleven Python tests and two JavaScript regression tests passed locally.
+- Browser verified administrator login, metadata-only enrollment listing, and transition from active to revoked against a disposable local database.
+- API tests verify metadata authentication, revocation authentication, rejected enrollment after revocation, and unchanged credentials for previously enrolled devices.

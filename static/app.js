@@ -62,7 +62,8 @@ $('enrollment').addEventListener('close', () => { $('enrollment-token').value=''
 document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => {
   document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b===button));
   document.querySelectorAll('.view').forEach(view => view.hidden = view.id!==button.dataset.view);
-  $('breadcrumb').textContent = button.textContent.slice(1).trim();
+  $('breadcrumb').textContent = button.dataset.view==='tokens' ? 'Enrollments' : button.textContent.slice(1).trim();
+  if (button.dataset.view==='tokens' && credential) loadEnrollments().catch(error => notify(error.message));
 });
 $('device-rows').onclick = async event => {
   const button = event.target.closest('button');
@@ -74,3 +75,20 @@ $('device-rows').onclick = async event => {
   catch(error) { notify(error.message); button.disabled=false; }
 };
 setInterval(() => { if (credential) refresh().catch(error => notify('Dashboard could not refresh: '+error.message)); },10000);
+
+async function loadEnrollments() {
+  const result = await api('enrollments');
+  $('token-list').innerHTML = result.enrollments.map(item => `<div class="event"><div><strong>${escape(item.id.slice(0,12))}</strong><p>Expires ${escape(date(item.expires))}</p></div><div><span class="badge ${item.status==='active'?'green':''}">${escape(item.status)}</span> ${item.status==='active'?`<button data-token-revoke="${escape(item.id)}">Revoke token</button>`:''}</div></div>`).join('') || '<p>No enrollment tokens issued yet. Select Enroll device to create one.</p>';
+}
+$('tokens-refresh').onclick = () => loadEnrollments().catch(error => notify(error.message));
+$('token-list').onclick = async event => {
+  const button = event.target.closest('[data-token-revoke]');
+  if (!button) return;
+  button.disabled = true;
+  try {
+    await api('enrollments/revoke',{id:button.dataset.tokenRevoke});
+    await loadEnrollments();
+    await refresh();
+    notify('Enrollment token revoked. Existing device access is unchanged.');
+  } catch (error) { notify(error.message); button.disabled=false; }
+};

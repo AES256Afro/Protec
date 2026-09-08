@@ -28,6 +28,24 @@ class ControlPlaneTests(unittest.TestCase):
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
             results = list(executor.map(attempt,range(8)))
         self.assertEqual(sum(bool(r) for r in results),1)
+    def test_enrollment_listing_and_revocation(self):
+        token = self.store.enrollment()['token']
+        record = self.store.enrollment_list()[0]
+        self.assertEqual(record['status'],'active')
+        self.assertNotIn(token,json.dumps(self.store.enrollment_list()))
+        self.store.revoke_enrollment(record['id'])
+        self.assertEqual(self.store.enrollment_list()[0]['status'],'revoked')
+        with self.assertRaises(PermissionError):
+            self.store.enroll(token,inventory())
+        with self.assertRaises(ValueError):
+            self.store.revoke_enrollment(record['id'])
+        used_token = self.store.enrollment()['token']
+        device = self.store.enroll(used_token,inventory())
+        used_record = next(r for r in self.store.enrollment_list() if r['status']=='used')
+        with self.assertRaises(ValueError):
+            self.store.revoke_enrollment(used_record['id'])
+        self.assertEqual(self.store.identify(device['credential']),device['id'])
+
     def test_expired_token_rejected(self):
         token = self.store.enrollment()['token']
         with self.store.connect() as db:
@@ -113,6 +131,15 @@ class HTTPTests(unittest.TestCase):
         dashboard = self.request('/api/dashboard','a'*40)[1]
         self.assertEqual(dashboard['jobs'][0]['status'],'completed')
         self.assertEqual(len(dashboard['devices']),1)
+    def test_enrollment_metadata_requires_admin(self):
+        token = self.request('/api/enrollments','a'*40,{})[1]['token']
+        self.assertEqual(self.request('/api/enrollments')[0],401)
+        listing = self.request('/api/enrollments','a'*40)[1]['enrollments']
+        self.assertNotIn(token,json.dumps(listing))
+        self.assertEqual(self.request('/api/enrollments/revoke',None,{'id':listing[0]['id']})[0],401)
+        self.assertEqual(self.request('/api/enrollments/revoke','a'*40,{'id':listing[0]['id']})[0],200)
+        self.assertEqual(self.request('/api/enroll',token,{'inventory':inventory()})[0],401)
+
     def test_cross_origin_and_invalid_inventory_rejected(self):
         self.assertEqual(self.request('/api/enrollments','a'*40,{},'https://evil.example')[0],401)
         token = self.request('/api/enrollments','a'*40,{})[1]['token']

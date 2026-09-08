@@ -43,6 +43,19 @@ class Store:
             db.execute('INSERT INTO enrollments(hash,expires) VALUES (?,?)', (digest(token),time.time()+900))
             self.audit(db,'administrator','enrollment.created','Expires in 15 minutes')
         return {'token':token,'expires_in':900}
+    def enrollment_list(self):
+        with self.connect() as db:
+            rows = db.execute('SELECT hash,expires,used FROM enrollments ORDER BY expires DESC LIMIT 100').fetchall()
+        now = time.time()
+        return [{'id':r['hash'],'expires':r['expires'],
+                 'status':'revoked' if r['used']==-1 else 'used' if r['used']==1 else 'expired' if r['expires']<=now else 'active'} for r in rows]
+    def revoke_enrollment(self, identifier):
+        with self.connect() as db:
+            changed = db.execute('UPDATE enrollments SET used=-1 WHERE hash=? AND used=0 AND expires>?',(identifier,time.time())).rowcount
+            if not changed:
+                raise ValueError('Active enrollment token not found')
+            self.audit(db,'administrator','enrollment.revoked',identifier)
+        return {'ok':True}
     def enroll(self, token, inventory):
         device, credential = secrets.token_hex(12), secrets.token_urlsafe(32)
         with self.connect() as db:
@@ -142,6 +155,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
             path = urlsplit(self.path).path
+            if path=='/api/enrollments':
+                self.admin()
+                return self.reply(200,{'enrollments':self.server.store.enrollment_list()})
             if path=='/api/dashboard':
                 self.admin()
                 return self.reply(200,self.server.store.snapshot())
@@ -178,6 +194,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.admin()
                 if path=='/api/enrollments':
                     result = store.enrollment()
+                elif path=='/api/enrollments/revoke':
+                    result = store.revoke_enrollment(str(body.get('id','')))
                 elif path=='/api/jobs':
                     result = store.queue(str(body.get('device','')))
                 elif path=='/api/revoke':
