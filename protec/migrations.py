@@ -1,5 +1,5 @@
 """Transactional, forward-only schema upgrades with explicit compatibility checks."""
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 TABLES = {
     'enrollments': 'hash TEXT PRIMARY KEY, expires REAL, used INTEGER DEFAULT 0',
     'devices': 'id TEXT PRIMARY KEY, hash TEXT UNIQUE, inventory TEXT, seen REAL, revoked INTEGER DEFAULT 0',
@@ -13,6 +13,9 @@ COLUMNS = {
     'audit': {'id','time','actor','action','target'},
 }
 
+CREDENTIAL_SCHEMA = 'id TEXT PRIMARY KEY, hash TEXT UNIQUE NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL, created REAL NOT NULL, expires REAL NOT NULL, revoked INTEGER NOT NULL DEFAULT 0, issued_by TEXT NOT NULL'
+CREDENTIAL_COLUMNS = {'id','hash','name','role','created','expires','revoked','issued_by'}
+
 def version(connection):
     value = connection.execute('PRAGMA user_version').fetchone()[0]
     if value < 0 or value > SCHEMA_VERSION:
@@ -22,9 +25,10 @@ def version(connection):
 def validate_schema(connection):
     current = version(connection)
     tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    if not COLUMNS.keys() <= tables:
+    required_tables = {**COLUMNS, **({'credentials':CREDENTIAL_COLUMNS} if current>=2 else {})}
+    if not required_tables.keys() <= tables:
         raise ValueError('Source is not a complete Protec database')
-    for table, required in COLUMNS.items():
+    for table, required in required_tables.items():
         # Names come exclusively from the constant schema, never user input.
         columns = {row[1] for row in connection.execute(f'PRAGMA table_info({table})')}
         if not required <= columns:
@@ -48,4 +52,7 @@ def migrate(connection):
         connection.execute('CREATE INDEX IF NOT EXISTS jobs_created ON jobs(created DESC)')
         connection.execute('CREATE INDEX IF NOT EXISTS devices_seen ON devices(seen DESC)')
         connection.execute('PRAGMA user_version=1')
+    if current<2:
+        connection.execute(f'CREATE TABLE credentials ({CREDENTIAL_SCHEMA})')
+        connection.execute('PRAGMA user_version=2')
     validate_schema(connection)

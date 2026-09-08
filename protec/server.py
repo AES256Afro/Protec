@@ -13,6 +13,7 @@ from urllib.parse import urlsplit, parse_qs
 from protec.migrations import migrate
 from protec.history import page, health
 from protec.packages import validate_report
+from protec import identity
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -35,11 +36,11 @@ class Store:
             db.close()
     def audit(self, db, actor, action, target):
         db.execute('INSERT INTO audit(time,actor,action,target) VALUES (?,?,?,?)', (time.time(),actor,action,target))
-    def enrollment(self):
+    def enrollment(self, actor='administrator'):
         token = secrets.token_urlsafe(32)
         with self.connect() as db:
             db.execute('INSERT INTO enrollments(hash,expires) VALUES (?,?)', (digest(token),time.time()+900))
-            self.audit(db,'administrator','enrollment.created','Expires in 15 minutes')
+            self.audit(db,actor,'enrollment.created','Expires in 15 minutes')
         return {'token':token,'expires_in':900}
     def enrollment_list(self):
         with self.connect() as db:
@@ -47,12 +48,12 @@ class Store:
         now = time.time()
         return [{'id':r['hash'],'expires':r['expires'],
                  'status':'revoked' if r['used']==-1 else 'used' if r['used']==1 else 'expired' if r['expires']<=now else 'active'} for r in rows]
-    def revoke_enrollment(self, identifier):
+    def revoke_enrollment(self, identifier, actor='administrator'):
         with self.connect() as db:
             changed = db.execute('UPDATE enrollments SET used=-1 WHERE hash=? AND used=0 AND expires>?',(identifier,time.time())).rowcount
             if not changed:
                 raise ValueError('Active enrollment token not found')
-            self.audit(db,'administrator','enrollment.revoked',identifier)
+            self.audit(db,actor,'enrollment.revoked',identifier)
         return {'ok':True}
     def enroll(self, token, inventory):
         device, credential = secrets.token_hex(12), secrets.token_urlsafe(32)
@@ -80,7 +81,7 @@ class Store:
             for row in rows:
                 db.execute("UPDATE jobs SET status='running',lease=? WHERE id=?",(time.time()+120,row['id']))
         return {'jobs':[dict(r) for r in rows]}
-    def queue(self, device):
+    def queue(self, device, actor='administrator'):
         job = secrets.token_hex(12)
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
@@ -89,7 +90,7 @@ class Store:
             if db.execute("SELECT id FROM jobs WHERE device=? AND status IN ('queued','running')",(device,)).fetchone():
                 raise ValueError('An inventory refresh is already pending')
             db.execute('INSERT INTO jobs VALUES (?,?,?,?,?,?,?)',(job,device,'refresh_inventory','queued',time.time(),0,None))
-            self.audit(db,'administrator','inventory.requested',device)
+            self.audit(db,actor,'inventory.requested',device)
         return {'id':job}
     def complete(self, device, job):
         with self.connect() as db:
@@ -98,14 +99,14 @@ class Store:
                 raise ValueError('No running job for this device')
             self.audit(db,device,'inventory.completed',job)
         return {'ok':True}
-    def revoke(self, device):
+    def revoke(self, device, actor='administrator'):
         with self.connect() as db:
             if not db.execute('UPDATE devices SET revoked=1 WHERE id=? AND revoked=0',(device,)).rowcount:
                 raise ValueError('Active device not found')
             db.execute("UPDATE jobs SET status='cancelled' WHERE device=? AND status IN ('queued','running')",(device,))
-            self.audit(db,'administrator','device.revoked',device)
+            self.audit(db,actor,'device.revoked',device)
         return {'ok':True}
-    def snapshot(self):
+    def snapshot(self, include_audit=True):
         with self.connect() as db:
             devices = [dict(r) for r in db.execute('SELECT id,inventory,seen,revoked FROM devices ORDER BY rowid DESC LIMIT 100')]
             for device in devices:
@@ -113,7 +114,7 @@ class Store:
             jobs = [dict(r) for r in db.execute('SELECT id,device,kind,status,created,result FROM jobs ORDER BY created DESC LIMIT 100')]
             fleet = dict(db.execute('SELECT count(*) AS records,coalesce(sum(revoked=0),0) AS active,coalesce(sum(revoked=0 AND seen>?),0) AS online FROM devices',(time.time()-90,)).fetchone())
             pending = db.execute("SELECT count(*) FROM jobs WHERE status IN ('queued','running')").fetchone()[0]
-            audit = [dict(r) for r in db.execute('SELECT * FROM audit ORDER BY id DESC LIMIT 100')]
+            audit = [dict(r) for r in db.execute('SELECT * FROM audit ORDER BY id DESC LIMIT 100')] if include_audit else []
         return {'devices':devices,'jobs':jobs,'audit':audit,'time':time.time(),'pending':pending,'fleet':fleet}
 
 def inventory_input(body):
@@ -150,32 +151,43 @@ class Handler(BaseHTTPRequestHandler):
         if not value.startswith('Bearer ') or len(value)>512:
             raise PermissionError('Authentication required')
         return value[7:]
-    def admin(self):
-        if not secrets.compare_digest(self.bearer(),self.server.admin_token):
-            raise PermissionError('Administrator authentication required')
+    def access(self, permission):
+        principal=identity.authenticate(self.server.store,self.server.admin_token,self.bearer())
+        return identity.require(principal,permission)
     def do_GET(self):
         try:
             url = urlsplit(self.path)
             path = url.path
             if path=='/api/history':
-                self.admin()
                 query = parse_qs(url.query)
+                kind=query.get('kind',['audit'])[0]
+                permission={'audit':'audit.read','jobs':'jobs.read','enrollments':'enrollments.read','devices':'inventory.read','credentials':'credentials.read'}.get(kind)
+                if permission is None:
+                    raise ValueError('Unknown history collection')
+                self.access(permission)
                 cursor = query.get('cursor',[None])[0]
-                return self.reply(200,page(self.server.store,query.get('kind',['audit'])[0],int(query.get('limit',['50'])[0]),int(cursor) if cursor is not None else None))
+                return self.reply(200,page(self.server.store,kind,int(query.get('limit',['50'])[0]),int(cursor) if cursor is not None else None))
             if path=='/api/health':
-                self.admin()
+                self.access('health.read')
                 return self.reply(200,health(self.server.store,self.server.started))
             if path=='/api/enrollments':
-                self.admin()
+                self.access('enrollments.read')
                 return self.reply(200,{'enrollments':self.server.store.enrollment_list()})
+            if path=='/api/credentials':
+                self.access('credentials.read')
+                cursor=parse_qs(url.query).get('cursor',[None])[0]
+                return self.reply(200,identity.listing(self.server.store,int(cursor) if cursor is not None else None))
             if path=='/api/dashboard':
-                self.admin()
-                return self.reply(200,self.server.store.snapshot())
+                principal=self.access('inventory.read')
+                data=self.server.store.snapshot(include_audit='audit.read' in principal['permissions'])
+                return self.reply(200,{**data,'identity':principal})
             assets = {'/':('index.html','text/html; charset=utf-8'),'/app.js':('app.js','text/javascript'),'/style.css':('style.css','text/css')}
             if path in assets:
                 name, mime = assets[path]
                 return self.reply(200,(ROOT/'static'/name).read_bytes(),mime)
             self.reply(404,{'error':'Not found'})
+        except identity.Forbidden as e:
+            self.reply(403,{'error':str(e)})
         except PermissionError as e:
             self.reply(401,{'error':str(e)})
         except ValueError as e:
@@ -205,18 +217,25 @@ class Handler(BaseHTTPRequestHandler):
             elif path=='/api/complete':
                 result = store.complete(store.identify(self.bearer()),str(body.get('job','')))
             else:
-                self.admin()
-                if path=='/api/enrollments':
-                    result = store.enrollment()
-                elif path=='/api/enrollments/revoke':
-                    result = store.revoke_enrollment(str(body.get('id','')))
-                elif path=='/api/jobs':
-                    result = store.queue(str(body.get('device','')))
-                elif path=='/api/revoke':
-                    result = store.revoke(str(body.get('device','')))
-                else:
+                permissions={'/api/enrollments':'enrollments.write','/api/enrollments/revoke':'enrollments.write','/api/jobs':'jobs.write','/api/revoke':'devices.revoke','/api/credentials':'credentials.write','/api/credentials/revoke':'credentials.write'}
+                if path not in permissions:
                     return self.reply(404,{'error':'Not found'})
+                actor=self.access(permissions[path])['id']
+                if path=='/api/enrollments':
+                    result = store.enrollment(actor)
+                elif path=='/api/enrollments/revoke':
+                    result = store.revoke_enrollment(str(body.get('id','')),actor)
+                elif path=='/api/jobs':
+                    result = store.queue(str(body.get('device','')),actor)
+                elif path=='/api/revoke':
+                    result = store.revoke(str(body.get('device','')),actor)
+                elif path=='/api/credentials':
+                    result = identity.issue(store,body.get('name'),body.get('role'),body.get('hours'),actor)
+                elif path=='/api/credentials/revoke':
+                    result = identity.revoke(store,str(body.get('id','')),actor)
             self.reply(200,result)
+        except identity.Forbidden as e:
+            self.reply(403,{'error':str(e)})
         except PermissionError as e:
             self.reply(401,{'error':str(e)})
         except (ValueError,UnicodeDecodeError) as e:

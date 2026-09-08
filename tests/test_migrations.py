@@ -34,16 +34,16 @@ class MigrationTests(unittest.TestCase):
             self.assertEqual(upgraded.identify(device['credential']),device['id'])
             self.assertEqual(upgraded.snapshot()['pending'],1)
             with upgraded.connect() as db:
-                self.assertEqual(validate_schema(db),1)
+                self.assertEqual(validate_schema(db),2)
     def test_future_database_refused_without_creating_tables(self):
         connection = sqlite3.connect(self.path)
-        connection.execute('PRAGMA user_version=2')
+        connection.execute('PRAGMA user_version=3')
         connection.close()
         with self.assertRaises(ValueError):
             Store(self.path)
         connection = sqlite3.connect(self.path)
         try:
-            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0],2)
+            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0],3)
             self.assertEqual(connection.execute('SELECT name FROM sqlite_master').fetchall(),[])
         finally:
             connection.close()

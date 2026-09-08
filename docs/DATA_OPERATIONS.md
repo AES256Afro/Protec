@@ -2,10 +2,10 @@
 
 The main device dashboard displays the latest 100 enrollments. Its fleet counters cover all records, including devices outside that page. Search filters the loaded devices. The History view provides all device, job, enrollment-token and audit records in insertion order, loading 50 at a time. Refresh the collection to see new records; new inserts do not repeat older records while paging.
 
-Administrator API routes:
+API routes (role permissions are enforced):
 
-- `GET /api/history?kind=audit&limit=50`: kinds are `audit`, `jobs`, `enrollments`, and `devices`. Page size is 1 to 100. Pass the returned `next_cursor` as `cursor` for the next page. A null cursor means the end. A cursor is scoped to its collection.
-- `GET /api/health`: database readability, schema version, uptime, and full record counts. This is readiness evidence, not a full SQLite integrity scan. Use `python3 -m protec.database check --source .protec/protec.db` for an integrity scan.
+- `GET /api/history?kind=audit&limit=50`: kinds are `audit`, `jobs`, `enrollments`, `devices`, and `credentials`. Audit, enrollment and credential collections require administrator permissions; device and job collections also permit viewer/operator credentials. Page size is 1 to 100. Pass the returned `next_cursor` as `cursor` for the next page. A null cursor means the end. A cursor is scoped to its collection.
+- `GET /api/health`: database readability, schema version, uptime, and full record counts, available to all three roles. This is readiness evidence, not a full SQLite integrity scan. Use `python3 -m protec.database check --source .protec/protec.db` for an integrity scan.
 
 History projections do not select device credential hashes. Enrollment-token identifiers are SHA-256 digests of random high-entropy tokens; they are not bearer credentials. Neither listing returns the token secret.
 

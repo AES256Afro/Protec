@@ -9,11 +9,20 @@ async function api(path, body) {
   if (!response.ok) throw new Error(data.error || 'Request failed');
   return data;
 }
+const can = permission => snapshot?.identity?.permissions.includes(permission) || false;
 function notify(message) { $('notice').textContent = message; }
 function render() {
   if (!snapshot) return;
-  const active = snapshot.devices.filter(d => !d.revoked);
-  const online = active.filter(d => snapshot.time - d.seen < 90);
+  $('identity-label').textContent = `${snapshot.identity.name} · ${snapshot.identity.role}`;
+  $('enroll').disabled = !can('enrollments.write');
+  $('empty-enroll').hidden = !can('enrollments.write');
+  for (const [view,permission] of [['tokens','enrollments.read'],['audit','audit.read'],['access','credentials.read']]) {
+    document.querySelector(`[data-view="${view}"]`).hidden = !can(permission);
+  }
+  for (const [kind,permission] of [['audit','audit.read'],['enrollments','enrollments.read']]) {
+    document.querySelector(`#history-kind option[value="${kind}"]`).disabled = !can(permission);
+  }
+  if (!can('audit.read') && ['audit','enrollments'].includes($('history-kind').value)) $('history-kind').value='devices';
   $('total').textContent = snapshot.fleet.active;
   $('online').textContent = snapshot.fleet.online;
   $('offline').textContent = snapshot.fleet.active - snapshot.fleet.online;
@@ -25,7 +34,7 @@ function render() {
   $('device-rows').innerHTML = devices.map(d => {
     const inv = d.inventory;
     const connected = !d.revoked && snapshot.time - d.seen < 90;
-    return `<tr><td><strong>${escape(inv.hostname)}</strong><small>${escape(d.id)}</small></td><td><span class="badge ${connected?'green':''}">${d.revoked?'Revoked':connected?'Connected':'Offline'}</span></td><td>${escape(inv.os)}<small>${escape(inv.version)} · ${escape(inv.architecture)}</small></td><td>${escape(inv.privilege)}<small>Self-reported</small></td><td>${escape(date(d.seen))}</td><td>${d.revoked?'Access removed':`<button data-packages="${escape(d.id)}">Packages</button><button data-refresh="${escape(d.id)}">Refresh inventory</button><button data-revoke="${escape(d.id)}">Revoke</button>`}</td></tr>`;
+    return `<tr><td><strong>${escape(inv.hostname)}</strong><small>${escape(d.id)}</small></td><td><span class="badge ${connected?'green':''}">${d.revoked?'Revoked':connected?'Connected':'Offline'}</span></td><td>${escape(inv.os)}<small>${escape(inv.version)} · ${escape(inv.architecture)}</small></td><td>${escape(inv.privilege)}<small>Self-reported</small></td><td>${escape(date(d.seen))}</td><td>${d.revoked?'Access removed':`<button data-packages="${escape(d.id)}">Packages</button>${can('jobs.write')?`<button data-refresh="${escape(d.id)}">Refresh inventory</button>`:''}${can('devices.revoke')?`<button data-revoke="${escape(d.id)}">Revoke</button>`:''}`}</td></tr>`;
   }).join('') || (snapshot.devices.length ? '<tr><td colspan="6">No devices match your search.</td></tr>' : '');
   $('job-list').innerHTML = snapshot.jobs.map(j => `<div class="event"><div><strong>Inventory refresh</strong><p>${escape(j.device)} · ${escape(j.result || 'Awaiting agent result')}</p></div><div><span class="badge ${j.status==='completed'?'green':''}">${escape(j.status)}</span><p>${escape(date(j.created))}</p></div></div>`).join('') || '<p>No device actions yet. Request an inventory refresh from Devices.</p>';
   $('audit-list').innerHTML = snapshot.audit.map(a => `<div class="event"><div><strong>${escape(a.action.replaceAll('.',' '))}</strong><p>${escape(a.actor)} → ${escape(a.target)}</p></div><small>${escape(date(a.time))}</small></div>`).join('') || '<p>No audit events yet. Enroll your first device to begin.</p>';
@@ -47,7 +56,7 @@ $('login-form').addEventListener('submit', async event => {
     return;
   }
   credential = token;
-  try { await refresh(); $('token').value=''; $('login').hidden=true; $('content').hidden=false; $('lock').hidden=false; $('enroll').disabled=false; notify(''); }
+  try { await refresh(); $('token').value=''; $('login').hidden=true; $('content').hidden=false; $('lock').hidden=false; notify(''); }
   catch(error) { credential=''; notify(error.message); }
 });
 $('lock').onclick = () => location.reload();
@@ -62,7 +71,8 @@ $('enrollment').addEventListener('close', () => { $('enrollment-token').value=''
 document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => {
   document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b===button));
   document.querySelectorAll('.view').forEach(view => view.hidden = view.id!==button.dataset.view);
-  $('breadcrumb').textContent = ['tokens','history','health'].includes(button.dataset.view) ? button.textContent.trim() : button.textContent.slice(1).trim();
+  $('breadcrumb').textContent = ['tokens','history','health','access'].includes(button.dataset.view) ? button.textContent.trim() : button.textContent.slice(1).trim();
+  if (button.dataset.view==='access' && credential) loadAccess().catch(error => notify(error.message));
   if (button.dataset.view==='history' && credential) loadHistory(true).catch(error => notify(error.message));
   if (button.dataset.view==='health' && credential) loadHealth().catch(error => notify(error.message));
   if (button.dataset.view==='tokens' && credential) loadEnrollments().catch(error => notify(error.message));
@@ -151,3 +161,48 @@ function renderPackages() {
   $('package-list').innerHTML=packageItems.filter(item=>item.name.toLowerCase().includes(search)).map(item=>`<div class="event"><strong>${escape(item.name)}</strong><span>${escape(item.version)}</span></div>`).join('') || '<p>No matching package records.</p>';
 }
 $('package-search').oninput=renderPackages;
+
+let accessCursor=null;
+let accessBusy=false;
+async function loadAccess(reset=true) {
+  if(accessBusy) return;
+  accessBusy=true;
+  $('access-more').disabled=true;
+  try {
+  const result=await api('credentials'+(!reset && accessCursor?'?cursor='+accessCursor:''));
+  const entries=result.credentials.map(item=>`<div class="event"><div><strong>${escape(item.name)}</strong><p>${escape(item.role)} · Expires ${escape(date(item.expires))}</p><p>${escape(item.id)}</p></div><div><span class="badge ${item.status==='active'?'green':''}">${escape(item.status)}</span> ${item.status==='active'?`<button data-access-revoke="${escape(item.id)}">Revoke credential</button>`:''}</div></div>`).join('');
+  if(reset) $('access-list').innerHTML=entries || '<p>No service credentials issued. Your local administrator token remains available in its protected file.</p>';
+  else $('access-list').insertAdjacentHTML('beforeend',entries);
+  accessCursor=result.next_cursor;
+  } finally {accessBusy=false;$('access-more').disabled=!accessCursor;}
+}
+$('access-more').onclick=()=>loadAccess(false).catch(error=>notify(error.message));
+$('access-form').addEventListener('submit',async event=>{
+  event.preventDefault();
+  const button=$('access-create');
+  button.disabled=true;
+  try {
+    const result=await api('credentials',{name:$('access-name').value.trim(),role:$('access-role').value,hours:Number($('access-hours').value)});
+    $('issued-access').value=result.token;
+    $('issued-access-description').textContent=`${result.name} · ${result.role} · Expires ${date(result.expires)}. Save this credential securely. Closing this dialog clears its value from the page.`;
+    $('access-dialog').showModal();
+    $('access-name').value='';
+    await loadAccess();
+    await refresh();
+  } catch(error) {notify(error.message);}
+  finally {button.disabled=false;}
+});
+$('access-dialog').addEventListener('close',()=>{$('issued-access').value='';});
+$('access-list').onclick=async event=>{
+  const button=event.target.closest('[data-access-revoke]');
+  if (!button) return;
+  if (!confirm('Revoke this service credential? It will be rejected on subsequent requests.')) return;
+  button.disabled=true;
+  try {
+    await api('credentials/revoke',{id:button.dataset.accessRevoke});
+    if (button.dataset.accessRevoke===snapshot.identity.id) {location.reload();return;}
+    await loadAccess();
+    await refresh();
+    notify('Service credential revoked.');
+  } catch(error) {notify(error.message);button.disabled=false;}
+};

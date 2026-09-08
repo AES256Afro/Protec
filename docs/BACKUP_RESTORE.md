@@ -20,7 +20,7 @@ This validates and creates a new database. It does not switch the running server
 
 Administrator tokens and agent state files are outside the database; back them up separately using protected storage. This command does not copy them or expose their values. Restoring an older snapshot can restore earlier token/device authorization state, including records revoked since that snapshot. Review and reapply revocations before permitting device traffic. Planned credential rotation/recovery controls will address that lifecycle explicitly.
 
-The server upgrades a valid legacy unversioned schema to version 1 transactionally on startup. A failed migration rolls back its changes. Newer schemas and incomplete tables are refused without automatic repair. Backups can preserve either supported schema version; restoring a legacy snapshot upgrades it when the server starts. Retention policy and automated backup scheduling remain separate M2 work. Restore testing verifies the database and device authentication in an isolated test, not production cutover or OS service recovery.
+The server upgrades a valid legacy unversioned schema to version 2 transactionally on startup. A failed migration rolls back its changes. Newer schemas and incomplete tables are refused without automatic repair. Backups can preserve supported schema versions 0, 1 or 2; restoring a legacy snapshot upgrades it when the server starts. Retention policy and automated backup scheduling remain separate M2 work. Restore testing verifies the database and device authentication in an isolated test, not production cutover or OS service recovery.
 
 Read-only integrity and schema validation:
 
