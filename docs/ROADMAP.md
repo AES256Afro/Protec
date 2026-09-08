@@ -27,7 +27,7 @@ Each milestone owns one capability. Shared execution, identity, audit, schedulin
 
 ## Four-hour implementation window
 
-September 8, 2026, 11:30 AM to 3:30 PM America/Chicago (16:30 to 20:30 UTC). This is an implementation budget, not a claim that a production infrastructure platform can be completed in four hours.
+September 8, 2026, 11:30 AM to 3:36 PM America/Chicago (16:30 to 20:36:41 UTC), following the user's renewed four-hour request at 16:36:41 UTC. This is an implementation budget, not a claim that a production infrastructure platform can be completed in four hours.
 
 1. **First hour:** publish the expanded plan, complete M1 enrollment lifecycle and begin M2 migrations/backup validation.
 2. **Second hour:** package inventory adapters and evidence/freshness reporting. Prioritize read-only inventory; execution depends on M3/M4.

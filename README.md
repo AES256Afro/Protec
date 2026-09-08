@@ -69,3 +69,5 @@ Local credentials and the SQLite database are under `.protec/`, ignored by Git. 
 This prototype uses Python's development HTTP server. It has one administrator identity, no MFA, no production rate limiting, no credential rotation, no device attestation, and no tamper-resistant audit export. The SQLite audit table can be modified by the server's local administrator. A lost enrollment response consumes the token and may leave an orphan device record; revoke that record and enroll again. The local `.protec` directory should be owned by the user running the server, and should never be shared across untrusted users.
 
 See [the delivery roadmap](docs/ROADMAP.md) for the next implementation slices and [architecture](docs/ARCHITECTURE.md) for management and privilege boundaries.
+
+Database snapshots and recovery instructions: [Backup and staged restore](docs/BACKUP_RESTORE.md).
