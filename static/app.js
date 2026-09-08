@@ -14,11 +14,11 @@ function render() {
   if (!snapshot) return;
   const active = snapshot.devices.filter(d => !d.revoked);
   const online = active.filter(d => snapshot.time - d.seen < 90);
-  $('total').textContent = active.length;
-  $('online').textContent = online.length;
-  $('offline').textContent = active.length - online.length;
+  $('total').textContent = snapshot.fleet.active;
+  $('online').textContent = snapshot.fleet.online;
+  $('offline').textContent = snapshot.fleet.active - snapshot.fleet.online;
   $('pending').textContent = snapshot.pending;
-  $('count').textContent = snapshot.devices.length;
+  $('count').textContent = `${snapshot.devices.length} of ${snapshot.fleet.records}`;
   const term = $('search').value.toLowerCase();
   const devices = snapshot.devices.filter(d => (d.inventory.hostname+' '+d.inventory.os).toLowerCase().includes(term));
   $('empty').hidden = snapshot.devices.length > 0;
@@ -62,7 +62,9 @@ $('enrollment').addEventListener('close', () => { $('enrollment-token').value=''
 document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => {
   document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b===button));
   document.querySelectorAll('.view').forEach(view => view.hidden = view.id!==button.dataset.view);
-  $('breadcrumb').textContent = button.dataset.view==='tokens' ? 'Enrollments' : button.textContent.slice(1).trim();
+  $('breadcrumb').textContent = ['tokens','history','health'].includes(button.dataset.view) ? button.textContent.trim() : button.textContent.slice(1).trim();
+  if (button.dataset.view==='history' && credential) loadHistory(true).catch(error => notify(error.message));
+  if (button.dataset.view==='health' && credential) loadHealth().catch(error => notify(error.message));
   if (button.dataset.view==='tokens' && credential) loadEnrollments().catch(error => notify(error.message));
 });
 $('device-rows').onclick = async event => {
@@ -92,3 +94,41 @@ $('token-list').onclick = async event => {
     notify('Enrollment token revoked. Existing device access is unchanged.');
   } catch (error) { notify(error.message); button.disabled=false; }
 };
+
+let historyCursor = null;
+let historyBusy = false;
+async function loadHistory(reset) {
+  if (historyBusy) return;
+  historyBusy = true;
+  $('history-kind').disabled = true;
+  $('history-more').disabled = true;
+  $('history-reload').disabled = true;
+  try {
+    const kind = $('history-kind').value;
+    const result = await api(`history?kind=${encodeURIComponent(kind)}&limit=50${!reset && historyCursor ? '&cursor='+historyCursor : ''}`);
+    const entries = result.items.map(item => {
+      let title, detail, timestamp;
+      if (kind==='devices') { title=item.inventory.hostname; detail=`${item.inventory.os} · ${item.revoked?'Revoked':'Enrolled'} · ${item.id}`; timestamp=item.seen; }
+      else if (kind==='jobs') { title=item.kind; detail=`${item.status} · ${item.device} · ${item.result || 'Awaiting result'}`; timestamp=item.created; }
+      else if (kind==='enrollments') { title=`Token ${item.id.slice(0,12)}`; detail=item.status; timestamp=item.expires; }
+      else { title=item.action; detail=`${item.actor} → ${item.target}`; timestamp=item.time; }
+      return `<div class="event"><div><strong>${escape(title)}</strong><p>${escape(detail)}</p></div><small>${kind==='enrollments'?'Expires ':''}${escape(date(timestamp))}</small></div>`;
+    }).join('');
+    if (reset) $('history-list').innerHTML = entries || '<p>No records.</p>';
+    else $('history-list').insertAdjacentHTML('beforeend',entries);
+    historyCursor=result.next_cursor;
+  } finally {
+    historyBusy=false;
+    $('history-kind').disabled=false;
+    $('history-more').disabled=!historyCursor;
+    $('history-reload').disabled=false;
+  }
+}
+$('history-kind').onchange=()=>loadHistory(true).catch(error=>notify(error.message));
+$('history-reload').onclick=()=>loadHistory(true).catch(error=>notify(error.message));
+$('history-more').onclick=()=>loadHistory(false).catch(error=>notify(error.message));
+async function loadHealth() {
+  const result=await api('health');
+  $('health-output').textContent=`Status: ${result.status}. Database: ${result.database}. Schema: ${result.schema_version}. Uptime: ${result.uptime_seconds} seconds. Records: ${result.counts.devices} devices, ${result.counts.jobs} jobs, ${result.counts.enrollments} enrollment tokens, ${result.counts.audit} audit events.`;
+}
+$('health-refresh').onclick=()=>loadHealth().catch(error=>notify(error.message));
