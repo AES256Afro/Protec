@@ -42,3 +42,15 @@ Schema 5 adds job metadata without changing earlier job records. Take a backup a
 On the development Mac, restart the existing inventory agent from the updated checkout after verifying the new control plane. Preserve `.protec/agent.json`, its device credential and the HTTPS origin. Verify a newly queued inventory refresh has a protocol-1 receipt; merely seeing a heartbeat does not prove the new job protocol is active.
 
 Remaining M4 work includes independently verifiable job signatures, durable local execution receipts, capability admission for additional job kinds, cancellation, approvals, maintenance windows and side-effect-specific recovery. This milestone does not claim exactly-once execution or a privileged execution framework. Native agent service installation and protected credential storage remain separate milestones.
+
+## Unreleased: inventory refresh cancellation
+
+The source after the 0.5.0 tag adds **Cancel refresh** for queued and running inventory jobs in the dashboard and job history. This is not present in the published 0.5.0 image. The matching mock source includes a queued and a running example to exercise the controls.
+
+`POST /api/jobs/cancel` accepts `{ "id": "JOB_ID" }`. An operator or administrator must have `jobs.write` permission for the device stored on the job. A caller-supplied `device` field cannot change that authorization target. Viewers and device-agent credentials cannot cancel management jobs. Cancellation is restricted to inventory refreshes.
+
+Cancellation stops subsequent delivery, invalidates any current lease and rejects late completion. A local inventory read that has already started may still finish and regular check-ins continue. This operation does not terminate a process on the endpoint or revoke its enrollment.
+
+The status change and `inventory.cancelled` audit event commit together. The event records the caller's credential ID and the job ID. Repeating cancellation returns `duplicate: true` without another event. Completed or failed jobs cannot be rewritten, and accepted receipts are preserved. A concurrent completion and cancellation have one winner: if completion commits first, cancellation fails; if cancellation commits first, completion is rejected. Cancelled jobs remain cancelled after server restart. No schema change is required beyond schema 5.
+
+Source validation covers queued/running cancellation, both delivery protocols, scope spoofing, unauthorized callers, duplicate requests, rollback on audit failure, completion races and restart. Live rollout and native behavior are tracked separately in WORK_SESSION.md. Pending delivery of 0.5.0 remains independent of this unreleased addition.

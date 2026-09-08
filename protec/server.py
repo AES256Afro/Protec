@@ -217,17 +217,20 @@ class Handler(BaseHTTPRequestHandler):
             elif path=='/api/complete':
                 result = store.complete(store.identify(self.bearer()),str(body.get('job','')),body)
             else:
-                permissions={'/api/enrollments':'enrollments.write','/api/enrollments/revoke':'enrollments.write','/api/jobs':'jobs.write','/api/revoke':'devices.revoke','/api/credentials':'credentials.write','/api/credentials/revoke':'credentials.write','/api/credentials/rotate':'credentials.write','/api/credentials/rotation/finish':'credentials.write','/api/credentials/rotation/cancel':'credentials.write'}
+                permissions={'/api/enrollments':'enrollments.write','/api/enrollments/revoke':'enrollments.write','/api/jobs':'jobs.write','/api/jobs/cancel':'jobs.write','/api/revoke':'devices.revoke','/api/credentials':'credentials.write','/api/credentials/revoke':'credentials.write','/api/credentials/rotate':'credentials.write','/api/credentials/rotation/finish':'credentials.write','/api/credentials/rotation/cancel':'credentials.write'}
                 if path not in permissions:
                     return self.reply(404,{'error':'Not found'})
                 target=str(body.get('device','')) if path in ('/api/jobs','/api/revoke') else None
-                actor=self.access(permissions[path],target)['id']
+                principal=self.access(permissions[path],target)
+                actor=principal['id']
                 if path=='/api/enrollments':
                     result = store.enrollment(actor)
                 elif path=='/api/enrollments/revoke':
                     result = store.revoke_enrollment(str(body.get('id','')),actor)
                 elif path=='/api/jobs':
                     result = store.queue(str(body.get('device','')),actor)
+                elif path=='/api/jobs/cancel':
+                    result = job_contracts.cancel(store,str(body.get('id','')),principal)
                 elif path=='/api/revoke':
                     result = store.revoke(str(body.get('device','')),actor)
                 elif path=='/api/credentials':

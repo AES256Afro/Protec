@@ -4,6 +4,7 @@ import json
 import re
 import secrets
 import time
+from protec.identity import require
 
 MAX_ATTEMPTS=3
 LEASE_SECONDS=120
@@ -106,3 +107,24 @@ def public_record(row):
     result=dict(row)
     result['receipt']=json.loads(result['receipt']) if result['receipt'] else None
     return result
+
+
+def cancel(store,identifier,principal):
+    """Cancel server-side delivery; an in-flight read can still finish on the agent."""
+    require(principal,'jobs.write')
+    with store.connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        row=db.execute('SELECT device,kind,status FROM jobs WHERE id=?',(identifier,)).fetchone()
+        if row is None:
+            raise ValueError('Inventory job not found')
+        # Authorize the stored target, never a device id supplied alongside the request.
+        require(principal,'jobs.write',row['device'])
+        if row['kind']!='refresh_inventory':
+            raise ValueError('Only inventory refresh cancellation is supported')
+        if row['status']=='cancelled':
+            return {'ok':True,'id':identifier,'status':'cancelled','duplicate':True}
+        if row['status'] not in ('queued','running'):
+            raise ValueError('Only queued or running inventory jobs can be cancelled')
+        db.execute("UPDATE jobs SET status='cancelled',lease=0,lease_hash=NULL,result='Cancelled by operator' WHERE id=?",(identifier,))
+        store.audit(db,principal['id'],'inventory.cancelled',identifier)
+    return {'ok':True,'id':identifier,'status':'cancelled','duplicate':False}
