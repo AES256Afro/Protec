@@ -74,3 +74,19 @@ test('mock refresh includes a safe simulated completion receipt in job history',
  assert.deepEqual((await app.request('history?kind=jobs')).items[0].receipt,job.receipt);
  assert.ok(!JSON.stringify(job).includes('lease_token'));
 });
+
+test('mock queued and running refreshes can be cancelled once and block late cancellation of completed work',async()=>{
+ const app=demo();let snapshot=await app.request('dashboard');assert.equal(snapshot.pending,2);
+ for(const job of snapshot.jobs){
+   await assert.rejects(()=>app.request('jobs',{device:job.device}),/already pending/);
+   assert.equal((await app.request('jobs/cancel',{id:job.id})).duplicate,false);
+   assert.equal((await app.request('jobs/cancel',{id:job.id})).duplicate,true);
+ }
+ snapshot=await app.request('dashboard');assert.equal(snapshot.pending,0);
+ assert.equal(snapshot.audit.filter(row=>row.action==='inventory.cancelled').length,2);
+ assert.ok(snapshot.jobs.every(job=>job.status==='cancelled'&&!job.receipt));
+ await app.request('jobs',{device:snapshot.devices[0].id});
+ const completed=(await app.request('dashboard')).jobs[0];
+ await assert.rejects(()=>app.request('jobs/cancel',{id:completed.id}),/Only queued or running/);
+ await assert.rejects(()=>app.request('jobs/cancel',{id:'missing'}),/not found/);
+});

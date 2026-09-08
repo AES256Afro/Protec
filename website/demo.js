@@ -5,7 +5,7 @@
   const id=()=>`demo-${++sequence}`;
   const permissions=['inventory.read','jobs.read','health.read','jobs.write','devices.revoke','enrollments.read','enrollments.write','audit.read','credentials.read','credentials.write'];
   const devices=[['demo-linux-01','lab-ubuntu','Linux','Ubuntu 24.04','x86_64',12],['demo-mac-01','studio-mac','macOS','27.0','arm64',25],['demo-linux-02','lab-debian','Linux','Debian 13','x86_64',7200]].map(([id,hostname,os,version,architecture,age])=>({id,seen:now()-age,revoked:0,inventory:{hostname,os,version,architecture,agent_version:'0.2.0',privilege:'standard',packages:{status:'ok',scope:os==='macOS'?'Homebrew formulae':'Debian packages',manager:os==='macOS'?'homebrew':'dpkg',collected_at:now()-age,total:3,truncated:false,message:'Illustrative package versions from mock devices.',items:[{name:'curl',version:'8.14.1'},{name:'git',version:'2.49.0'},{name:'python3',version:'3.13.5'}]}}}));
-  const jobs=[];
+  const jobs=[['demo-running-refresh','demo-mac-01','running',1],['demo-queued-refresh','demo-linux-02','queued',0]].map(([id,device,status,attempt])=>({id,device,status,attempt,kind:'refresh_inventory',created:now()-45,result:null,contract_version:attempt?1:0,receipt:null,completed:null,issued_by:'demo-administrator'}));
   const audit=[{id:1,time:now()-60,actor:'demo-administrator',action:'demo.started',target:'Mock fleet'}];
   const enrollments=[];
   const credentials=[];
@@ -15,7 +15,7 @@
     const [route,query='']=path.split('?');
     let result;
     if(body===undefined) {
-      if(route==='dashboard') result={devices,jobs,audit,time:now(),pending:0,fleet:{records:devices.length,active:devices.filter(d=>!d.revoked).length,online:devices.filter(d=>!d.revoked && now()-d.seen<90).length},identity:{id:'demo-administrator',name:'Demo administrator',role:'administrator',device_ids:null,permissions}};
+      if(route==='dashboard') result={devices,jobs,audit,time:now(),pending:jobs.filter(job=>['queued','running'].includes(job.status)).length,fleet:{records:devices.length,active:devices.filter(d=>!d.revoked).length,online:devices.filter(d=>!d.revoked && now()-d.seen<90).length},identity:{id:'demo-administrator',name:'Demo administrator',role:'administrator',device_ids:null,permissions}};
       else if(route==='enrollments') result={enrollments:status(enrollments)};
       else if(route==='credentials') result={credentials:status(credentials),next_cursor:null};
       else if(route==='health') result={status:'simulated',database:'mock data in this tab',schema_version:5,uptime_seconds:0,counts:{devices:devices.length,jobs:jobs.length,enrollments:enrollments.length,audit:audit.length}};
@@ -51,7 +51,17 @@
         result={ok:true,invalidated_ids:[route.endsWith('/cancel')?replacement.id:item.id]};
       }
     }
-    else if(route==='jobs'||route==='revoke') {const device=devices.find(d=>d.id===body.device&&!d.revoked);if(!device) throw Error('Active mock device not found');if(route==='revoke'){device.revoked=1;record('device.revoked',device.id);}else{device.seen=now();device.inventory.packages.collected_at=now();const jobId=id();jobs.unshift({id:jobId,device:device.id,kind:'refresh_inventory',status:'completed',created:now(),result:'Simulated inventory received',contract_version:1,attempt:1,completed:now(),issued_by:'demo-administrator',receipt:{version:1,job:jobId,device:device.id,kind:'refresh_inventory',attempt:1,outcome:'succeeded',inventory_sha256:'d'.repeat(64),recorded_at:now()}});record('inventory.completed',device.id);}result={ok:true};}
+    else if(route==='jobs/cancel') {
+      const job=jobs.find(item=>item.id===body.id);
+      if(!job) throw Error('Inventory job not found');
+      if(job.status==='cancelled') result={ok:true,id:job.id,status:'cancelled',duplicate:true};
+      else {
+        if(!['queued','running'].includes(job.status)) throw Error('Only queued or running inventory jobs can be cancelled');
+        job.status='cancelled';job.result='Cancelled by operator';record('inventory.cancelled',job.id);
+        result={ok:true,id:job.id,status:'cancelled',duplicate:false};
+      }
+    }
+    else if(route==='jobs'||route==='revoke') {const device=devices.find(d=>d.id===body.device&&!d.revoked);if(!device) throw Error('Active mock device not found');if(route==='revoke'){device.revoked=1;for(const job of jobs.filter(job=>job.device===device.id&&['queued','running'].includes(job.status)))job.status='cancelled';record('device.revoked',device.id);}else{if(jobs.some(job=>job.device===device.id&&['queued','running'].includes(job.status)))throw Error('An inventory refresh is already pending');device.seen=now();device.inventory.packages.collected_at=now();const jobId=id();jobs.unshift({id:jobId,device:device.id,kind:'refresh_inventory',status:'completed',created:now(),result:'Simulated inventory received',contract_version:1,attempt:1,completed:now(),issued_by:'demo-administrator',receipt:{version:1,job:jobId,device:device.id,kind:'refresh_inventory',attempt:1,outcome:'succeeded',inventory_sha256:'d'.repeat(64),recorded_at:now()}});record('inventory.completed',device.id);}result={ok:true};}
     if(!result) throw Error('This operation is not available in the demo');
     return structuredClone(result);
   }};
