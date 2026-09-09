@@ -100,6 +100,7 @@ def status_digest(path=Path('/var/lib/dpkg/status')):
 def verify_selections(request,env,deadline=None):
     # Native APT can fall back to pattern matching for unresolved names. Require
     # an exact metadata identity before allowing even a read-only simulation.
+    metadata={}
     for package in request['packages']:
         name,_,architecture=package['name'].partition(':')
         if request['action']=='install':
@@ -110,11 +111,35 @@ def verify_selections(request,env,deadline=None):
                 records.append(fields)
             if not any(r.get('Package')==name and r.get('Version')==package['version'] and (not architecture or r.get('Architecture') in (architecture,'all')) for r in records):
                 raise ValueError('Requested package version has no exact native metadata match')
+            metadata[(package['name'],package['version'])]=records
         else:
             output=run_query(['/usr/bin/dpkg-query','-W','-f=${Package}\t${Architecture}\t${db:Status-Status}\n',package['name']],env=env,deadline=deadline)
             rows=[line.split('\t') for line in output.splitlines()]
             if not any(len(row)==3 and row[0]==name and (not architecture or row[1] in (architecture,'all')) and row[2]=='installed' for row in rows):
                 raise ValueError('Removal preview requires an exactly matched installed package')
+    return metadata
+
+
+def artifact_manifest(changes,metadata,env,deadline):
+    artifacts=[]
+    for change in changes:
+        if change['after'] is None:continue
+        key=(change['name'],change['after'])
+        records=metadata.get(key)
+        if records is None:
+            output=run_query(['/usr/bin/apt-cache','show','--',key[0]+'='+key[1]],env=env,deadline=deadline)
+            records=[dict(line.split(': ',1) for line in paragraph.splitlines() if ': ' in line and not line.startswith(' ')) for paragraph in output.split('\n\n')]
+        name,_,architecture=change['name'].partition(':')
+        candidates=set()
+        for record in records:
+            if record.get('Package')!=name or record.get('Version')!=change['after'] or (architecture and record.get('Architecture') not in (architecture,'all')):continue
+            sha=record.get('SHA256','');size=record.get('Size','')
+            if re.fullmatch('[0-9a-f]{64}',sha) and re.fullmatch('[0-9]{1,10}',size) and 0<int(size)<=1024**3:
+                candidates.add((sha,int(size)))
+        if len(candidates)!=1:raise ValueError('Package artifact metadata is missing, ambiguous or exceeds its size limit')
+        sha,size=candidates.pop()
+        artifacts.append({'name':change['name'],'version':change['after'],'sha256':sha,'size':size})
+    return artifacts
 
 
 def preview(request,device):
@@ -126,16 +151,17 @@ def preview(request,device):
     deadline=time.monotonic()+90
     before=status_digest()
     env={'PATH':'/usr/sbin:/usr/bin:/sbin:/bin','LC_ALL':'C','DEBIAN_FRONTEND':'noninteractive'}
-    verify_selections(request,env,deadline)
+    metadata=verify_selections(request,env,deadline)
     apt_version=run_query(['/usr/bin/dpkg-query','-W','-f=${Version}','apt'],env=env,deadline=deadline).strip()
     if not re.fullmatch(VERSION,apt_version):raise ValueError('Unrecognized native APT version')
     output=run_query(command(request),env=env,deadline=deadline)
     changes=parse_simulation(output)
+    artifacts=artifact_manifest(changes,metadata,env,deadline)
     if status_digest()!=before:raise ValueError('Package state changed during preview; collect a new plan')
     created=int(time.time())
-    plan={'version':1,'kind':'apt_preview','device':device,'request':request,'created':created,'expires':created+900,
+    plan={'version':2,'kind':'apt_preview','device':device,'request':request,'created':created,'expires':created+900,
           'apt_version':apt_version,'dpkg_status_sha256':before,'simulation_sha256':hashlib.sha256(output.encode()).hexdigest(),
-          'changes':changes,'root_simulation':os.geteuid()==0,'requires_revalidation':True}
+          'changes':changes,'artifacts':artifacts,'root_simulation':os.geteuid()==0,'requires_revalidation':True}
     return {**plan,'plan_sha256':inventory_digest(plan)}
 
 
@@ -143,13 +169,14 @@ def validate_plan(plan,device,*,now=None):
     """Validate content and target binding; a valid digest is not approval or trust."""
     fields={'version','kind','device','request','created','expires','apt_version','dpkg_status_sha256',
             'simulation_sha256','changes','root_simulation','requires_revalidation','plan_sha256'}
+    if isinstance(plan,dict) and plan.get('version')==2:fields.add('artifacts')
     if not isinstance(plan,dict) or set(plan)!=fields:
         raise ValueError('Invalid APT preview plan')
     now=time.time() if now is None else now
     from protec.policies import finite_time
     if not finite_time(now) or type(plan['created']) is not int or type(plan['expires']) is not int or not 0<plan['created']<=now+300 or plan['expires']!=plan['created']+900 or plan['expires']<=now:
         raise ValueError('Expired or invalid APT preview time')
-    if type(plan['version']) is not int or plan['version']!=1 or plan['kind']!='apt_preview' or not isinstance(device,str) or not re.fullmatch('[0-9a-f]{24}',device) or plan['device']!=device:
+    if type(plan['version']) is not int or plan['version'] not in (1,2) or plan['kind']!='apt_preview' or not isinstance(device,str) or not re.fullmatch('[0-9a-f]{24}',device) or plan['device']!=device:
         raise ValueError('APT preview does not match this device or contract')
     if type(plan['root_simulation']) is not bool or plan['requires_revalidation'] is not True or not isinstance(plan['apt_version'],str) or not re.fullmatch(VERSION,plan['apt_version']):
         raise ValueError('Invalid APT preview metadata')
@@ -172,6 +199,14 @@ def validate_plan(plan,device,*,now=None):
         if (change['before'] is None and change['after'] is None) or change['action']!=action:
             raise ValueError('Inconsistent APT change')
     if changes!=sorted(changes,key=lambda c:c['name']):raise ValueError('APT changes are not canonical')
+    if plan['version']==2:
+        artifacts=plan['artifacts']
+        expected=[(c['name'],c['after']) for c in changes if c['after'] is not None]
+        if not isinstance(artifacts,list) or len(artifacts)!=len(expected):raise ValueError('APT artifact manifest does not match the changes')
+        for artifact,(name,version) in zip(artifacts,expected):
+            if (not isinstance(artifact,dict) or set(artifact)!={'name','version','sha256','size'} or artifact['name']!=name or artifact['version']!=version or
+                    not isinstance(artifact['sha256'],str) or not re.fullmatch('[0-9a-f]{64}',artifact['sha256']) or type(artifact['size']) is not int or not 0<artifact['size']<=1024**3):
+                raise ValueError('Invalid APT artifact manifest')
     payload={k:v for k,v in plan.items() if k!='plan_sha256'}
     if inventory_digest(payload)!=plan['plan_sha256']:raise ValueError('APT preview content changed')
     return json.loads(json.dumps(plan))
