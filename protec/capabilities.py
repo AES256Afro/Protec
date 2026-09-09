@@ -4,11 +4,13 @@ import re
 UNREPORTED=object()
 # Every executable kind must be explicitly admitted here. Advertising cannot add handlers.
 LEGACY_INVENTORY=frozenset({('refresh_inventory',0),('refresh_inventory',1)})
-SUPPORTED=LEGACY_INVENTORY
+SUPPORTED=LEGACY_INVENTORY | frozenset({('preview_packages',1)})
 
 
-def inventory_offer():
-    return {'version':1,'jobs':[{'kind':'refresh_inventory','versions':[1]}]}
+def inventory_offer(apt_previews=False):
+    jobs=[{'kind':'refresh_inventory','versions':[1]}]
+    if apt_previews:jobs.append({'kind':'preview_packages','versions':[1]})
+    return {'version':1,'jobs':jobs}
 
 
 def parse_offer(value):

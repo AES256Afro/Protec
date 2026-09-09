@@ -78,6 +78,7 @@ class PolicyStoreTests(unittest.TestCase):
     def test_schema_six_upgrade_preserves_existing_rows(self):
         with self.store.connect() as db:
             before=[tuple(r) for r in db.execute('SELECT * FROM devices')]
+            db.execute('ALTER TABLE jobs DROP COLUMN payload');db.execute('ALTER TABLE jobs DROP COLUMN preview')
             db.execute('DROP TABLE policy_objects');db.execute('PRAGMA user_version=6')
         upgraded=Store(self.store.path)
         with upgraded.connect() as db:

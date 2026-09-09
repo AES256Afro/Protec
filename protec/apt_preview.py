@@ -97,13 +97,13 @@ def status_digest(path=Path('/var/lib/dpkg/status')):
     return hashlib.sha256(data).hexdigest()
 
 
-def verify_selections(request,env):
+def verify_selections(request,env,deadline=None):
     # Native APT can fall back to pattern matching for unresolved names. Require
     # an exact metadata identity before allowing even a read-only simulation.
     for package in request['packages']:
         name,_,architecture=package['name'].partition(':')
         if request['action']=='install':
-            output=run_query(['/usr/bin/apt-cache','show','--',package['name']+'='+package['version']],env=env)
+            output=run_query(['/usr/bin/apt-cache','show','--',package['name']+'='+package['version']],env=env,deadline=deadline)
             records=[]
             for paragraph in output.split('\n\n'):
                 fields=dict(line.split(': ',1) for line in paragraph.splitlines() if ': ' in line and not line.startswith(' '))
@@ -111,7 +111,7 @@ def verify_selections(request,env):
             if not any(r.get('Package')==name and r.get('Version')==package['version'] and (not architecture or r.get('Architecture') in (architecture,'all')) for r in records):
                 raise ValueError('Requested package version has no exact native metadata match')
         else:
-            output=run_query(['/usr/bin/dpkg-query','-W','-f=${Package}\t${Architecture}\t${db:Status-Status}\n',package['name']],env=env)
+            output=run_query(['/usr/bin/dpkg-query','-W','-f=${Package}\t${Architecture}\t${db:Status-Status}\n',package['name']],env=env,deadline=deadline)
             rows=[line.split('\t') for line in output.splitlines()]
             if not any(len(row)==3 and row[0]==name and (not architecture or row[1] in (architecture,'all')) and row[2]=='installed' for row in rows):
                 raise ValueError('Removal preview requires an exactly matched installed package')
@@ -123,12 +123,13 @@ def preview(request,device):
         raise ValueError('A canonical enrolled device ID is required')
     if platform.system()!='Linux' or not Path('/usr/bin/apt-get').is_file():
         raise ValueError('APT previews require a Debian or Ubuntu Linux target')
+    deadline=time.monotonic()+90
     before=status_digest()
     env={'PATH':'/usr/sbin:/usr/bin:/sbin:/bin','LC_ALL':'C','DEBIAN_FRONTEND':'noninteractive'}
-    verify_selections(request,env)
-    apt_version=run_query(['/usr/bin/dpkg-query','-W','-f=${Version}','apt'],env=env).strip()
+    verify_selections(request,env,deadline)
+    apt_version=run_query(['/usr/bin/dpkg-query','-W','-f=${Version}','apt'],env=env,deadline=deadline).strip()
     if not re.fullmatch(VERSION,apt_version):raise ValueError('Unrecognized native APT version')
-    output=run_query(command(request),env=env)
+    output=run_query(command(request),env=env,deadline=deadline)
     changes=parse_simulation(output)
     if status_digest()!=before:raise ValueError('Package state changed during preview; collect a new plan')
     created=int(time.time())

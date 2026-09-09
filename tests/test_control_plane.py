@@ -152,7 +152,7 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(self.request(path,'a'*40)[0],200)
         for query in ('limit=0','limit=999','limit=bad','cursor=-1','cursor=999999999999999999999','kind=sqlite_master'):
             self.assertEqual(self.request('/api/history?'+query,'a'*40)[0],400)
-        self.assertEqual(self.request('/api/health','a'*40)[1]['schema_version'],7)
+        self.assertEqual(self.request('/api/health','a'*40)[1]['schema_version'],8)
 
     def test_enrollment_metadata_requires_admin(self):
         token = self.request('/api/enrollments','a'*40,{})[1]['token']
@@ -188,6 +188,21 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(self.request('/api/groups',token,{'name':'X','members':[]})[0],403)
         self.assertEqual(self.request('/api/compliance?limit=101','a'*40)[0],400)
         self.assertEqual(self.request('/api/compliance?cursor=invalid','a'*40)[0],400)
+
+    def test_package_preview_http_authority_and_input_validation(self):
+        from protec.identity import issue
+        inv={**inventory(),'os':'Linux','apt_preview':1}
+        one=self.server.store.enroll(self.server.store.enrollment()['token'],inv)
+        other=self.server.store.enroll(self.server.store.enrollment()['token'],inv)
+        viewer=issue(self.server.store,'Viewer','viewer',1,'admin',[one['id']])['token']
+        operator=issue(self.server.store,'Operator','operator',1,'admin',[one['id']])['token']
+        request={'action':'install','packages':[{'name':'fixture','version':'1.0'}]}
+        body={'device':one['id'],'request':request}
+        self.assertEqual(self.request('/api/package-previews',viewer,body)[0],403)
+        self.assertEqual(self.request('/api/package-previews',operator,{**body,'device':other['id']})[0],403)
+        self.assertEqual(self.request('/api/package-previews',operator,{**body,'request':None})[0],400)
+        self.assertEqual(self.request('/api/package-previews',operator,body)[0],200)
+        self.assertEqual(self.request('/api/package-previews',operator,body)[0],400)
 
 if __name__=='__main__':
     unittest.main()

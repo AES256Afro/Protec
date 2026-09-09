@@ -66,3 +66,10 @@ class AptPreviewTests(unittest.TestCase):
             with self.assertRaises(ValueError):validate_plan(changed,'b'*24)
         with self.assertRaises(ValueError):validate_plan(plan,'b'*24,now=plan['expires'])
         copy=validate_plan(plan,'b'*24);copy['changes'].clear();self.assertEqual(len(plan['changes']),1)
+
+    def test_shared_query_deadline_stops_a_slow_child(self):
+        import sys,time
+        from protec.packages import run_query
+        start=time.monotonic()
+        with self.assertRaises(ValueError):run_query([sys.executable,'-c','import time; time.sleep(5)'],deadline=start+0.05)
+        self.assertLess(time.monotonic()-start,2)

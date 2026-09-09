@@ -13,7 +13,7 @@ async function api(path, body) {
 const can = permission => snapshot?.identity?.permissions.includes(permission) || false;
 function notify(message) { $('notice').textContent = message; }
 function cancelJobButton(job) {
-  return can('jobs.write') && ['queued','running'].includes(job.status) ? `<button data-cancel-job="${escape(job.id)}">Cancel refresh</button>` : '';
+  return can('jobs.write') && ['queued','running'].includes(job.status) ? `<button data-cancel-job="${escape(job.id)}">${job.kind==='preview_packages'?'Cancel preview':'Cancel refresh'}</button>` : '';
 }
 const canSchedule = () => can('jobs.write') && snapshot?.job_windows === 1;
 const pendingRefresh = device => snapshot?.jobs.some(job => job.device === device && ['queued','running'].includes(job.status));
@@ -23,7 +23,7 @@ function jobWindow(job) {
 function jobReceipt(job) {
   const receipt=job.receipt;
   if(!receipt) return `<p>${job.status==='completed'?'Legacy completion; no receipt recorded':['failed','cancelled'].includes(job.status)?'No completion receipt recorded':job.contract_version?'Awaiting completion receipt':job.attempt?'Legacy agent; no completion receipt':'Awaiting agent delivery'}</p>`;
-  return `<details><summary>Completion receipt</summary><p>Attempt ${escape(receipt.attempt)} · Recorded ${escape(date(receipt.recorded_at))}</p><p>Inventory SHA-256: <code class="receipt-digest">${escape(receipt.inventory_sha256)}</code></p></details>`;
+  return `<details><summary>Completion receipt</summary><p>Attempt ${escape(receipt.attempt)} · Recorded ${escape(date(receipt.recorded_at))}</p><p>${receipt.kind==='preview_packages'?'Result':'Inventory'} SHA-256: <code class="receipt-digest">${escape(receipt.inventory_sha256||receipt.result_sha256)}</code></p></details>`;
 }
 function render() {
   if (!snapshot) return;
@@ -54,7 +54,7 @@ function render() {
     const connected = !d.revoked && snapshot.time - d.seen < 90;
     return `<tr><td><strong>${escape(inv.hostname)}</strong><small>${escape(d.id)}</small></td><td><span class="badge ${connected?'green':''}">${d.revoked?'Revoked':connected?'Connected':'Offline'}</span></td><td>${escape(inv.os)}<small>${escape(inv.version)} · ${escape(inv.architecture)}</small></td><td>${escape(inv.privilege)}<small>Self-reported</small></td><td>${escape(date(d.seen))}</td><td>${d.revoked?'Access removed':`<button data-packages="${escape(d.id)}">Packages</button>${can('jobs.write')?`<button data-refresh="${escape(d.id)}">Refresh inventory</button>${canSchedule()?`<button data-schedule="${escape(d.id)}" ${pendingRefresh(d.id)?'disabled title="An inventory refresh is already pending"':''}>Schedule refresh</button>`:''}`:''}${can('devices.revoke')?`<button data-revoke="${escape(d.id)}">Revoke</button>`:''}`}</td></tr>`;
   }).join('') || (snapshot.devices.length ? '<tr><td colspan="6">No devices match your search.</td></tr>' : '');
-  $('job-list').innerHTML = snapshot.jobs.map(j => `<div class="event"><div><strong>Inventory refresh</strong><p>${escape(j.device)} · ${escape(j.result || 'Awaiting agent result')}</p><p>Delivery attempts: ${escape(j.attempt ?? 0)} of 3</p>${jobWindow(j)}${jobReceipt(j)}${cancelJobButton(j)}</div><div><span class="badge ${j.status==='completed'?'green':''}">${escape(j.status)}</span><p>${escape(date(j.created))}</p></div></div>`).join('') || '<p>No device actions yet. Request an inventory refresh from Devices.</p>';
+  $('job-list').innerHTML = snapshot.jobs.map(j => `<div class="event"><div><strong>${j.kind==='preview_packages'?'Package change preview':'Inventory refresh'}</strong><p>${escape(j.device)} · ${escape(j.result || 'Awaiting agent result')}</p><p>Delivery attempts: ${escape(j.attempt ?? 0)} of 3</p>${jobWindow(j)}${jobReceipt(j)}${packagePlan(j)}${cancelJobButton(j)}</div><div><span class="badge ${j.status==='completed'&&j.preview?.outcome!=='unavailable'?'green':''}">${escape(j.preview?.outcome==='unavailable'?'unavailable':j.status)}</span><p>${escape(date(j.created))}</p></div></div>`).join('') || '<p>No device actions yet. Request an inventory refresh from Devices.</p>';
   $('audit-list').innerHTML = snapshot.audit.map(a => `<div class="event"><div><strong>${escape(a.action.replaceAll('.',' '))}</strong><p>${escape(a.actor)} → ${escape(a.target)}</p></div><small>${escape(date(a.time))}</small></div>`).join('') || '<p>No audit events yet. Enroll your first device to begin.</p>';
 }
 async function refresh() {
@@ -165,9 +165,13 @@ async function loadHealth() {
 $('health-refresh').onclick=()=>loadHealth().catch(error=>notify(error.message));
 
 let packageItems=[];
+let previewDevice=null;
 function showPackages(deviceId) {
   const device=snapshot.devices.find(item=>item.id===deviceId);
   if (!device) return;
+  previewDevice=deviceId;
+  $('package-preview-form').hidden=!(can('jobs.write') && snapshot.package_previews===1 && device.inventory.apt_preview===1 && !device.revoked);
+  $('package-preview-error').textContent='';$('package-name').value='';$('package-version').value='';
   $('package-title').textContent=`Packages on ${device.inventory.hostname}`;
   const report=device.inventory.packages;
   packageItems=report?.items || [];
@@ -404,3 +408,22 @@ async function savePolicyObject(kind,body,button){
 }
 $('group-form').onsubmit=event=>{event.preventDefault();return savePolicyObject('groups',{name:$('group-name').value,members:Array.from($('group-members').selectedOptions,option=>option.value)},$('group-save'));};
 $('policy-form').onsubmit=event=>{event.preventDefault();return savePolicyObject('policies',{name:$('policy-name').value,group_id:$('policy-group').value,enabled:$('policy-enabled').value==='true',rule:{kind:'package_present',manager:$('policy-manager').value,package:$('policy-package').value,max_age_seconds:Number($('policy-age').value)}},$('policy-save'));};
+
+function packagePlan(job){
+  const plan=job.preview?.plan;
+  if(!plan)return '';
+  return `<details><summary>Review package preview</summary><p>No changes applied. Preview ${plan.expires<=snapshot.time?'expired':'expires '+escape(date(plan.expires))}. Approval and execution are not enabled.</p><p>Plan SHA-256: <code class="receipt-digest">${escape(plan.plan_sha256)}</code></p>${plan.changes.map(c=>`<p><strong>${escape(c.name)}</strong> · ${escape({change_version:'Version change',install:'Install',remove:'Remove'}[c.action]||c.action)} · ${escape(c.before||'not installed')} → ${escape(c.after||'removed')}</p>`).join('')||'<p>No package changes needed.</p>'}<p>${plan.root_simulation?'Root':'Unprivileged'} simulation. Native package state must be revalidated before any future execution.</p></details>`;
+}
+$('package-action').onchange=()=>{$('package-version-label').hidden=$('package-action').value==='remove';};
+$('package-preview-form').onsubmit=async event=>{
+  event.preventDefault();const button=$('package-preview-submit');
+  if(button.disabled)return;
+  const device=snapshot?.devices.find(d=>d.id===previewDevice);
+  if(!can('jobs.write')||snapshot?.package_previews!==1||!device||device.revoked||device.inventory.apt_preview!==1){$('package-preview-error').textContent='Package previews are no longer available for this device.';return;}
+  if(pendingRefresh(previewDevice)){$('package-preview-error').textContent='A device action is already pending.';return;}
+  const name=$('package-name').value.trim(),version=$('package-version').value.trim(),action=$('package-action').value;
+  if(!/^[a-z0-9][a-z0-9+.-]{1,127}(?::[a-z0-9][a-z0-9-]{0,31})?$/.test(name)||/[+-]$/.test(name.split(':')[0])||!['install','remove'].includes(action)||(action==='install'&&!/^[0-9][A-Za-z0-9.+:~\-]{0,127}$/.test(version))){$('package-preview-error').textContent='Enter an exact package name and, for installation, an exact version.';return;}
+  button.disabled=true;
+  try{await api('package-previews',{device:previewDevice,request:{action,packages:[{name,...(action==='install'?{version}:{})}]}});$('packages-dialog').close();previewDevice=null;notify('Package preview requested. Results will appear in Activity.');try{await refresh();}catch(e){notify('Preview requested, but dashboard reload failed: '+e.message);}}
+  catch(e){$('package-preview-error').textContent=e.message;}finally{button.disabled=false;}
+};

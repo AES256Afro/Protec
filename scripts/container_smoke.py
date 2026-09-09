@@ -48,7 +48,7 @@ def seed():
     import os
     assert os.getuid()==10001
     health=request('/api/health',token)
-    assert health['schema_version']==7 and health['version']==VERSION
+    assert health['schema_version']==8 and health['version']==VERSION
     assert request('/healthz')['status']=='ok'
     request('/api/dashboard',expected=401)
     enrollment=request('/api/enrollments',token,{})
@@ -79,7 +79,18 @@ def seed():
     request('/api/jobs/cancel',token,{'id':scheduled})
     assert request('/api/jobs/cancel',token,{'id':scheduled})['duplicate']
     pending=request('/api/jobs',token,{'device':device['id'],'window':window})['id']
-    group=request('/api/groups',token,{'name':'Disposable pilot','members':[device['id'],other['id']]})
+    preview_inventory={**INVENTORY,'apt_preview':1}
+    preview_offer={'inventory':preview_inventory,'job_protocol':1,'job_capabilities':{'version':1,'jobs':[{'kind':'preview_packages','versions':[1]}]}}
+    request('/api/heartbeat',other['credential'],preview_offer)
+    preview_job=request('/api/package-previews',token,{'device':other['id'],'request':{'action':'install','packages':[{'name':'fixture','version':'1.0'}]}})['id']
+    leased=request('/api/heartbeat',other['credential'],preview_offer)['jobs'][0]
+    assert leased['id']==preview_job and leased['kind']=='preview_packages'
+    unavailable={'job':preview_job,'version':1,'attempt':leased['attempt'],'lease_token':leased['lease']['token'],'result':{'outcome':'unavailable','reason':'preview_unavailable'}}
+    preview_receipt=request('/api/complete',other['credential'],unavailable)['receipt']
+    assert preview_receipt['kind']=='preview_packages' and preview_receipt['outcome']=='unavailable'
+    assert request('/api/complete',other['credential'],unavailable)['duplicate']
+    assert not any(j['id']==preview_job for j in request('/api/dashboard',reader['token'])['jobs'])
+    group=request('/api/groups' ,token,{'name':'Disposable pilot','members':[device['id'],other['id']]})
     policy=request('/api/policies',token,{'name':'Git evidence','group_id':group['id'],'enabled':True,'rule':{'kind':'package_present','manager':'dpkg','package':'git','max_age_seconds':3600}})
     compliance=request('/api/compliance',reader['token'])
     assert compliance['total']==1 and compliance['results'][0]['device_id']==device['id']
