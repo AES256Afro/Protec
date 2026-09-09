@@ -69,4 +69,4 @@ An optional protected server key signs each protocol-1 inventory envelope within
 
 ## Unreleased: maintenance windows
 
-Inventory requests can include a one-shot UTC delivery window. Early polls consume no attempt, leases are capped at the window end, and missed windows expire with a transactional audit event on the next device heartbeat. Dashboard/history show the window; creation is currently API-only. This adds schema 6 after the published 0.5.0 release. See [inventory maintenance windows](JOB_WINDOWS.md) for boundary behavior, mock simulation, migration and rollout limits.
+Inventory requests can include a one-shot UTC delivery window. Early polls consume no attempt, leases are capped at the window end, and missed windows expire with a transactional audit event on the next device heartbeat. Dashboard/history show the window, and a guarded scheduling dialog and the API can create it. This adds schema 6 after the published 0.5.0 release. See [inventory maintenance windows](JOB_WINDOWS.md) for boundary behavior, mock simulation, migration and rollout limits.

@@ -114,7 +114,7 @@ class Store:
             fleet = dict(db.execute('SELECT count(*) AS records,coalesce(sum(revoked=0),0) AS active,coalesce(sum(revoked=0 AND seen>?),0) AS online FROM devices WHERE '+device_condition,[time.time()-90,*params]).fetchone())
             pending = db.execute("SELECT count(*) FROM jobs WHERE status IN ('queued','running') AND "+job_condition,params).fetchone()[0]
             audit = [dict(r) for r in db.execute('SELECT * FROM audit ORDER BY id DESC LIMIT 100')] if include_audit and device_ids is None else []
-        return {'devices':devices,'jobs':jobs,'audit':audit,'time':time.time(),'pending':pending,'fleet':fleet}
+        return {'devices':devices,'jobs':jobs,'audit':audit,'time':time.time(),'pending':pending,'fleet':fleet,'job_windows':1}
 
 def inventory_input(body):
     inv = body.get('inventory')

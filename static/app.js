@@ -15,6 +15,8 @@ function notify(message) { $('notice').textContent = message; }
 function cancelJobButton(job) {
   return can('jobs.write') && ['queued','running'].includes(job.status) ? `<button data-cancel-job="${escape(job.id)}">Cancel refresh</button>` : '';
 }
+const canSchedule = () => can('jobs.write') && snapshot?.job_windows === 1;
+const pendingRefresh = device => snapshot?.jobs.some(job => job.device === device && ['queued','running'].includes(job.status));
 function jobWindow(job) {
   return job.not_before == null ? '' : `<p>Window (local time): ${escape(date(job.not_before))} to ${escape(date(job.not_after))}</p>`;
 }
@@ -49,7 +51,7 @@ function render() {
   $('device-rows').innerHTML = devices.map(d => {
     const inv = d.inventory;
     const connected = !d.revoked && snapshot.time - d.seen < 90;
-    return `<tr><td><strong>${escape(inv.hostname)}</strong><small>${escape(d.id)}</small></td><td><span class="badge ${connected?'green':''}">${d.revoked?'Revoked':connected?'Connected':'Offline'}</span></td><td>${escape(inv.os)}<small>${escape(inv.version)} · ${escape(inv.architecture)}</small></td><td>${escape(inv.privilege)}<small>Self-reported</small></td><td>${escape(date(d.seen))}</td><td>${d.revoked?'Access removed':`<button data-packages="${escape(d.id)}">Packages</button>${can('jobs.write')?`<button data-refresh="${escape(d.id)}">Refresh inventory</button>`:''}${can('devices.revoke')?`<button data-revoke="${escape(d.id)}">Revoke</button>`:''}`}</td></tr>`;
+    return `<tr><td><strong>${escape(inv.hostname)}</strong><small>${escape(d.id)}</small></td><td><span class="badge ${connected?'green':''}">${d.revoked?'Revoked':connected?'Connected':'Offline'}</span></td><td>${escape(inv.os)}<small>${escape(inv.version)} · ${escape(inv.architecture)}</small></td><td>${escape(inv.privilege)}<small>Self-reported</small></td><td>${escape(date(d.seen))}</td><td>${d.revoked?'Access removed':`<button data-packages="${escape(d.id)}">Packages</button>${can('jobs.write')?`<button data-refresh="${escape(d.id)}">Refresh inventory</button>${canSchedule()?`<button data-schedule="${escape(d.id)}" ${pendingRefresh(d.id)?'disabled title="An inventory refresh is already pending"':''}>Schedule refresh</button>`:''}`:''}${can('devices.revoke')?`<button data-revoke="${escape(d.id)}">Revoke</button>`:''}`}</td></tr>`;
   }).join('') || (snapshot.devices.length ? '<tr><td colspan="6">No devices match your search.</td></tr>' : '');
   $('job-list').innerHTML = snapshot.jobs.map(j => `<div class="event"><div><strong>Inventory refresh</strong><p>${escape(j.device)} · ${escape(j.result || 'Awaiting agent result')}</p><p>Delivery attempts: ${escape(j.attempt ?? 0)} of 3</p>${jobWindow(j)}${jobReceipt(j)}${cancelJobButton(j)}</div><div><span class="badge ${j.status==='completed'?'green':''}">${escape(j.status)}</span><p>${escape(date(j.created))}</p></div></div>`).join('') || '<p>No device actions yet. Request an inventory refresh from Devices.</p>';
   $('audit-list').innerHTML = snapshot.audit.map(a => `<div class="event"><div><strong>${escape(a.action.replaceAll('.',' '))}</strong><p>${escape(a.actor)} → ${escape(a.target)}</p></div><small>${escape(date(a.time))}</small></div>`).join('') || '<p>No audit events yet. Enroll your first device to begin.</p>';
@@ -96,6 +98,7 @@ $('device-rows').onclick = async event => {
   const button = event.target.closest('button');
   if (!button) return;
   if (button.dataset.packages) { showPackages(button.dataset.packages); return; }
+  if (button.dataset.schedule) { openSchedule(button.dataset.schedule); return; }
   const revoke = button.dataset.revoke;
   if (revoke && !confirm('Revoke this device? Further check-ins will be rejected and pending jobs cancelled. Re-enrollment requires a new token.')) return;
   button.disabled=true;
@@ -270,3 +273,86 @@ async function cancelJob(event) {
 }
 $('job-list').onclick=cancelJob;
 $('history-list').onclick=cancelJob;
+
+
+let scheduledDevice = null;
+let scheduleBusy = false;
+function localMinute(value) {
+  const pad = number => String(number).padStart(2,'0');
+  return `${value.getFullYear()}-${pad(value.getMonth()+1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}`;
+}
+function scheduleWindow() {
+  const read = id => {
+    const raw = $(id).value;
+    const value = new Date(raw);
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(raw) || !Number.isFinite(value.getTime()) || localMinute(value) !== raw) throw Error('Choose valid local start and end times. A time skipped when clocks move forward cannot be scheduled.');
+    return Math.floor(value.getTime()/1000);
+  };
+  const start = read('schedule-start'), end = read('schedule-end'), now = Date.now()/1000;
+  if (start < now) throw Error('Choose a start time in the future.');
+  if (end <= start) throw Error('The window must end after it starts.');
+  if (end - start > 86400 || end > now + 30*86400) throw Error('Use a window no longer than 24 hours, ending within the next 30 days.');
+  return {start,end};
+}
+function previewSchedule() {
+  try {
+    const window = scheduleWindow();
+    $('schedule-error').textContent = '';
+    $('schedule-preview').textContent = `UTC: ${new Date(window.start*1000).toISOString()} to ${new Date(window.end*1000).toISOString()}. Duration: ${(window.end-window.start)/60} minutes.`;
+    $('schedule-submit').disabled = scheduleBusy;
+    return window;
+  } catch(error) {
+    $('schedule-preview').textContent = '';
+    $('schedule-error').textContent = error.message;
+    $('schedule-submit').disabled = true;
+    return null;
+  }
+}
+function openSchedule(deviceId) {
+  const device = snapshot?.devices.find(item => item.id === deviceId && !item.revoked);
+  if (!device || !canSchedule()) { notify('Scheduling is unavailable for this device or control plane.'); return; }
+  if (pendingRefresh(deviceId)) { notify('An inventory refresh is already pending. Review it in Activity.'); return; }
+  scheduledDevice = deviceId;
+  $('schedule-device').textContent = `${device.inventory.hostname} · ${deviceId}`;
+  $('schedule-timezone').textContent = `Times use ${Intl.DateTimeFormat().resolvedOptions().timeZone}. Review the UTC preview when clocks change; a repeated local time uses its first occurrence.`;
+  const start = Math.ceil((Date.now()+10*60000)/60000)*60000;
+  $('schedule-start').value = localMinute(new Date(start));
+  $('schedule-end').value = localMinute(new Date(start+30*60000));
+  previewSchedule();
+  $('schedule-dialog').showModal();
+  $('schedule-start').focus();
+}
+$('schedule-start').oninput = previewSchedule;
+$('schedule-end').oninput = previewSchedule;
+$('schedule-cancel').onclick = () => { if (!scheduleBusy) $('schedule-dialog').close(); };
+$('schedule-dialog').addEventListener('cancel',event => { if (scheduleBusy) event.preventDefault(); });
+$('schedule-dialog').addEventListener('close',() => {
+  scheduledDevice = null;
+  for (const id of ['schedule-start','schedule-end']) $(id).value = '';
+  for (const id of ['schedule-device','schedule-preview','schedule-error']) $(id).textContent = '';
+});
+$('schedule-form').addEventListener('submit',async event => {
+  event.preventDefault();
+  if (scheduleBusy) return;
+  const window = previewSchedule();
+  if (!window) return;
+  const device = snapshot?.devices.find(item => item.id === scheduledDevice && !item.revoked);
+  if (!device || !canSchedule()) { $('schedule-error').textContent = 'This device or scheduling permission is no longer available.'; return; }
+  if (pendingRefresh(scheduledDevice)) { $('schedule-error').textContent = 'A refresh is already pending. Close this dialog and review Activity.'; return; }
+  scheduleBusy = true;
+  for (const id of ['schedule-start','schedule-end','schedule-submit','schedule-close','schedule-cancel']) $(id).disabled = true;
+  let queued = false;
+  try {
+    await api('jobs',{device:scheduledDevice,window});
+    queued = true;
+    $('schedule-dialog').close();
+    notify('Inventory refresh scheduled. Review the window in Activity.');
+    await refresh();
+  } catch(error) {
+    if (queued) notify('The refresh was scheduled, but the dashboard could not reload. Reload the page to see it.');
+    else $('schedule-error').textContent = `${error.message} If the response was lost, check Activity before retrying.`;
+  } finally {
+    scheduleBusy = false;
+    for (const id of ['schedule-start','schedule-end','schedule-submit','schedule-close','schedule-cancel']) $(id).disabled = false;
+  }
+});
