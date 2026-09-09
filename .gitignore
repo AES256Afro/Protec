@@ -8,3 +8,5 @@ website/dist/
 website/node_modules/
 website/.wrangler/
 *.receipts/
+signing-key.json
+job-trust.json

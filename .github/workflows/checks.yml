@@ -16,6 +16,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - run: python -m pip install -r requirements-signing.txt
       - run: python -W error::ResourceWarning -m unittest discover -s tests -v
       - run: node --check static/app.js
       - run: node --test tests/*.cjs

@@ -2,13 +2,13 @@
 
 A Linux-first endpoint management project, with Windows and macOS planned next. The goal is a dashboard for enrollment, security posture, logs, configurations, patches, and audited remote access.
 
-**Version 0.3 is a self-hosted inventory pilot.** It supports independent Docker Compose deployment, an optional BoxPilot catalog install, enrollment, package inventory, and role-based credentials with optional device scopes. It does not yet enforce security policies, collect system logs, install patches, deploy configurations, or open remote sessions.
+**The 0.5 release is a self-hosted inventory pilot.** It supports independent Docker Compose deployment, an optional BoxPilot catalog install, enrollment, package inventory, and role-based credentials with optional device scopes. It does not yet enforce security policies, collect system logs, install patches, deploy configurations, or open remote sessions.
 
 Website: [foragefournuts.com](https://foragefournuts.com) · [Interactive mock demo](https://foragefournuts.com/demo/) · [Independent and BoxPilot deployment](docs/DEPLOYMENT.md)
 
 ## Run locally on your MacBook or Linux
 
-Requires Python 3.11 or newer. No third-party packages are required.
+Requires Python 3.11 or newer. The unsigned local inventory pilot needs no third-party packages. Optional job signing in unreleased source requires `requirements-signing.txt`; see [signed job setup](docs/JOB_SIGNATURES.md).
 
 ```sh
 cd Protec
@@ -58,9 +58,11 @@ Connection status means a check-in was received within 90 seconds. It is not a s
 ## Validation
 
 ```sh
-python3 -m unittest discover -s tests -v
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-signing.txt
+.venv/bin/python -W error::ResourceWarning -m unittest discover -s tests -v
 node --check static/app.js
-node --test tests/test_login.cjs
+node --test tests/*.cjs
 ```
 
 Tests exercise concurrent token consumption, expiration, hashed credential storage, cross-device authorization, lease expiry, revocation, malformed inventory, browser-origin rejection, and a real HTTP agent-to-server inventory job round trip.
@@ -69,7 +71,7 @@ Tests exercise concurrent token consumption, expiration, hashed credential stora
 
 Local credentials and the SQLite database are under `.protec/`, ignored by Git. Newly created files use restrictive POSIX permissions. Device credentials are plaintext in the local agent state file, protected by file permissions; an OS credential store remains planned. The browser uses a bearer credential without cookies and the API rejects cross-origin writes. The server has a fixed static-asset allowlist and a restrictive content security policy.
 
-This prototype uses Python's development HTTP server. It has a local administrator credential and expiring service credentials with viewer/operator/administrator roles. It has no SSO/MFA, no device-specific access scopes, no production rate limiting, no automatic credential rotation, no device attestation, and no tamper-resistant audit export. The SQLite audit table can be modified by the server's local administrator. A lost enrollment response consumes the token and may leave an orphan device record; revoke that record and enroll again. The local `.protec` directory should be owned by the user running the server, and should never be shared across untrusted users.
+Local development uses Python's development HTTP server; the container uses Gunicorn. The pilot has a local administrator credential, expiring service credentials with viewer/operator/administrator roles, optional device scopes and recoverable manual service-token rotation. It has no SSO/MFA, production rate limiting, automatic credential rotation, device attestation or tamper-resistant audit export. The SQLite audit table can be modified by the server's local administrator. A lost enrollment response consumes the token and may leave an orphan device record; revoke that record and enroll again. The local `.protec` directory should be owned by the user running the server, and should never be shared across untrusted users.
 
 See [the platform program plan](docs/PLATFORM_ROADMAP.md) for the full multi-year Linux, macOS and Windows management program, [the delivery roadmap](docs/ROADMAP.md) for the next implementation slices and [architecture](docs/ARCHITECTURE.md) for management and privilege boundaries.
 

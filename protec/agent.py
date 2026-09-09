@@ -57,7 +57,7 @@ def request(server,path,token,body):
     with build_opener(NoRedirect,HTTPSHandler(context=tls_context())).open(req,timeout=15) as response:
         return json.load(response)
 
-def cycle(state,journal=None):
+def cycle(state,journal=None,job_trust=None):
     offer=capabilities.inventory_offer()
     fresh = time.monotonic()-state.get('_package_scan',float('-inf'))>=300
     if fresh:
@@ -73,6 +73,8 @@ def cycle(state,journal=None):
     if any(job.get('version',0)!=negotiated for job in jobs):
         raise ValueError('Delivered job does not match the negotiated protocol')
     capabilities.validate_delivery(jobs,offer,response.get('capability_admission',capabilities.UNREPORTED))
+    if job_trust is not None:
+        job_trust.verify_delivery(jobs,response.get('job_signatures'),state.get('id'),state['server'])
     if journal is not None:
         if type(response.get('receipt_lookup')) is int and response['receipt_lookup']==1:
             for record in journal.pending():
@@ -102,6 +104,7 @@ def main():
     parser.add_argument('--state',type=Path,default=Path('.protec/agent.json'))
     parser.add_argument('--enroll',action='store_true')
     parser.add_argument('--once',action='store_true')
+    parser.add_argument('--job-trust',type=Path,help='Require jobs signed by the public keys in this protected trust file')
     parser.add_argument('--receipt-status',action='store_true',help='Print local receipt metadata without contacting the control plane')
     args = parser.parse_args()
     os.umask(0o077)
@@ -129,9 +132,16 @@ def main():
     if args.receipt_status:
         print(json.dumps(journal.status(),indent=2))
         return
+    job_trust=None
+    if args.job_trust:
+        try:
+            from protec.job_signatures import Trust
+            job_trust=Trust.load(args.job_trust,state['server'])
+        except (ValueError,OSError,ImportError):
+            raise SystemExit('Cannot load job trust; check the protected file, origin and signing dependency') from None
     while True:
         try:
-            count = cycle(state,journal)
+            count = cycle(state,journal,job_trust)
             print(f'Inventory sent; {count} job(s) received',flush=True)
         except URLError as error:
             print(f'Check-in failed: {error.reason}',flush=True)

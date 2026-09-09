@@ -1,6 +1,7 @@
 *
 !Dockerfile
 !requirements.txt
+!requirements-signing.txt
 !protec/
 !protec/**
 !static/

@@ -62,3 +62,7 @@ The command-line agent now records protocol-1 inventory attempts in a private SQ
 ## Unreleased: capability admission
 
 Agents can advertise a bounded list of supported job contracts on each heartbeat. The server withholds a new lease when the current report does not include its inventory contract; withheld delivery consumes no attempt. Missing reports retain only the old read-only inventory fallback. Reports never grant operator permissions or enable new job kinds. The new agent also checks delivery against its own report before local job processing. See [job capabilities](JOB_CAPABILITIES.md) for the contract, compatibility and validation limits.
+
+## Unreleased: pinned delivery signatures
+
+An optional protected server key signs each protocol-1 inventory envelope within the lease transaction. An agent explicitly configured with a protected public trust file verifies the full envelope and server origin before local job processing and refuses unsigned delivery. Old unsigned inventory agents remain compatible. This does not sign completion receipts or enable privileged operations. See [signed job setup and trust lifecycle](JOB_SIGNATURES.md) for configuration, canonical bytes, validation and outstanding rollout gates.
