@@ -1,0 +1,21 @@
+[Unit]
+Description=Protec single signed package operation
+After=network-online.target
+
+[Service]
+Type=exec
+User=root
+Group=root
+WorkingDirectory=/opt/protec-agent/current
+ExecStart=/usr/bin/python3 -m protec.package_worker
+Environment=PYTHONPATH=/opt/protec-agent/current
+Environment=PYTHONNOUSERSITE=1
+Environment=PATH=/usr/sbin:/usr/bin:/sbin:/bin
+UMask=0077
+RuntimeMaxSec=120
+TimeoutStopSec=10
+KillMode=control-group
+SendSIGKILL=yes
+Restart=no
+StandardOutput=null
+StandardError=null

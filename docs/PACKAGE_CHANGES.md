@@ -21,3 +21,14 @@ The earlier preview checks still verify that simulation alone leaves installed s
 ## Gates before enabling remote mutation
 
 The next integration must deliver owner-authorized approval and queueing, a supervised privileged worker with bounded runtime and child-process cleanup, durable completion recovery after worker/agent restart, an explicit unresolved-mutation recovery workflow, and portal/mock views for those outcomes. It must preserve signing and endpoint-policy requirements, deny unsigned delivery, and prevent automatic retries of package side effects. Keep the default capability allowlist closed until that complete path is tested through the actual portal-to-guest transport.
+
+
+## Local worker boundary
+
+`python -m protec.package_worker` reads root-owned local documents from `/var/lib/protec-package-worker`: `worker.json` (version 1, server origin and device ID), `job-trust.json`, `package-policy.json` and `request.json` (only job and proof). Documents must be mode 0600 inside the mode-0700 directory; each is limited to 16 KiB. The worker always uses the sibling `receipts` journal. Requests cannot supply an interpreter, command, identity, policy, trust or journal path. A nonblocking lock on the protected configuration serializes workers. Stop the service before replacing configuration.
+
+The request contains a short-lived lease and is separate from the secret-free receipt journal. It is retained as an owner-only input file in this internal runner; a future submission lifecycle must remove or replace it deliberately. Repeated activation cannot bypass the recorded-attempt guard. Do not add automatic restart or retries.
+
+`packaging/protec-package-worker.service` is an uninstalled template: root, the root-owned agent release path, no automatic restart, a 120-second runtime limit, 10-second stop grace and control-group termination. Native output is suppressed to avoid copying package-script output or secrets into the service journal. Runtime termination can leave a partially applied package operation; it is containment, not rollback. The durable attempt then blocks further mutations pending inspection. This unit does not create owner approval, provision trust, or permit remote submission.
+
+`package_worker_smoke.py` tests the template's supervision settings only in the marked Linux guest, replacing the command with an inert hanging fixture and shortening the timeout. The fixture forks a detached child and ignores SIGTERM, so success requires cgroup termination of that child. Actual signed operations through this service, managed provisioning, transport, result resend and inspected resolution remain integration gates.
