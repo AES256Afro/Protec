@@ -152,7 +152,7 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(self.request(path,'a'*40)[0],200)
         for query in ('limit=0','limit=999','limit=bad','cursor=-1','cursor=999999999999999999999','kind=sqlite_master'):
             self.assertEqual(self.request('/api/history?'+query,'a'*40)[0],400)
-        self.assertEqual(self.request('/api/health','a'*40)[1]['schema_version'],6)
+        self.assertEqual(self.request('/api/health','a'*40)[1]['schema_version'],7)
 
     def test_enrollment_metadata_requires_admin(self):
         token = self.request('/api/enrollments','a'*40,{})[1]['token']
@@ -168,6 +168,26 @@ class HTTPTests(unittest.TestCase):
         token = self.request('/api/enrollments','a'*40,{})[1]['token']
         self.assertEqual(self.request('/api/enroll',token,{'inventory':{}})[0],400)
         self.assertEqual(self.request('/api/enroll',token,{'inventory':inventory()})[0],200)
+
+    def test_policy_http_scope_and_write_authority(self):
+        from protec.identity import issue
+        store=self.server.store
+        one=store.enroll(store.enrollment()['token'],inventory())
+        two=store.enroll(store.enrollment()['token'],inventory())
+        code,group=self.request('/api/groups','a'*40,{'name':'Pilot','members':[one['id'],two['id']]})
+        self.assertEqual(code,200)
+        body={'name':'Git','group_id':group['id'],'enabled':True,'rule':{'kind':'package_present','manager':'dpkg','package':'git','max_age_seconds':3600}}
+        self.assertEqual(self.request('/api/policies','a'*40,body)[0],200)
+        for role in ('viewer','operator'):
+            token=issue(store,'Scoped',role,1,'admin',[one['id']])['token']
+            for route in ('groups','policies','compliance'):
+                code,result=self.request('/api/'+route,token)
+                self.assertEqual(code,200);self.assertNotIn(two['id'],json.dumps(result))
+                self.assertEqual(self.request('/api/'+route)[0],401)
+            self.assertEqual(self.request('/api/policies',token,body)[0],403)
+            self.assertEqual(self.request('/api/groups',token,{'name':'X','members':[]})[0],403)
+        self.assertEqual(self.request('/api/compliance?limit=101','a'*40)[0],400)
+        self.assertEqual(self.request('/api/compliance?cursor=invalid','a'*40)[0],400)
 
 if __name__=='__main__':
     unittest.main()

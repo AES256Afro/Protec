@@ -13,7 +13,7 @@ from urllib.parse import urlsplit, parse_qs
 from protec.migrations import migrate
 from protec.history import page, health
 from protec.packages import validate_report
-from protec import identity, capabilities, job_windows, jobs as job_contracts
+from protec import identity, policy_store, capabilities, job_windows, jobs as job_contracts
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -161,6 +161,10 @@ class Handler(BaseHTTPRequestHandler):
                 with self.server.store.connect() as db:
                     db.execute('SELECT 1 FROM devices LIMIT 1').fetchone()
                 return self.reply(200,{'status':'ok'})
+            if path in ('/api/groups','/api/policies','/api/compliance'):
+                principal=self.access('groups.read' if path=='/api/groups' else 'policies.read')
+                query=parse_qs(url.query)
+                return self.reply(200,policy_store.workspace(self.server.store,principal.get('device_ids'),path.rsplit('/',1)[1],cursor=query.get('cursor',[None])[0],limit=int(query.get('limit',['100'])[0])))
             if path=='/api/history':
                 query = parse_qs(url.query)
                 kind=query.get('kind',['audit'])[0]
@@ -187,7 +191,7 @@ class Handler(BaseHTTPRequestHandler):
             if path=='/api/dashboard':
                 principal=self.access('inventory.read')
                 data=self.server.store.snapshot(include_audit='audit.read' in principal['permissions'],device_ids=principal.get('device_ids'))
-                return self.reply(200,{**data,'identity':principal})
+                return self.reply(200,{**data,'identity':principal,'policy_management':1})
             assets = {'/':('index.html','text/html; charset=utf-8'),'/app.js':('app.js','text/javascript'),'/style.css':('style.css','text/css')}
             if path in assets:
                 name, mime = assets[path]
@@ -225,13 +229,15 @@ class Handler(BaseHTTPRequestHandler):
             elif path=='/api/complete':
                 result = store.complete(store.identify(self.bearer()),str(body.get('job','')),body)
             else:
-                permissions={'/api/enrollments':'enrollments.write','/api/enrollments/revoke':'enrollments.write','/api/jobs':'jobs.write','/api/jobs/cancel':'jobs.write','/api/revoke':'devices.revoke','/api/credentials':'credentials.write','/api/credentials/revoke':'credentials.write','/api/credentials/rotate':'credentials.write','/api/credentials/rotation/finish':'credentials.write','/api/credentials/rotation/cancel':'credentials.write'}
+                permissions={'/api/groups':'groups.write','/api/policies':'policies.write','/api/enrollments':'enrollments.write','/api/enrollments/revoke':'enrollments.write','/api/jobs':'jobs.write','/api/jobs/cancel':'jobs.write','/api/revoke':'devices.revoke','/api/credentials':'credentials.write','/api/credentials/revoke':'credentials.write','/api/credentials/rotate':'credentials.write','/api/credentials/rotation/finish':'credentials.write','/api/credentials/rotation/cancel':'credentials.write'}
                 if path not in permissions:
                     return self.reply(404,{'error':'Not found'})
                 target=str(body.get('device','')) if path in ('/api/jobs','/api/revoke') else None
                 principal=self.access(permissions[path],target)
                 actor=principal['id']
-                if path=='/api/enrollments':
+                if path in ('/api/groups','/api/policies'):
+                    result=policy_store.save(store,path.rsplit('/',1)[1],body,actor)
+                elif path=='/api/enrollments':
                     result = store.enrollment(actor)
                 elif path=='/api/enrollments/revoke':
                     result = store.revoke_enrollment(str(body.get('id','')),actor)

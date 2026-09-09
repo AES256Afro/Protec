@@ -6,9 +6,9 @@ import secrets
 import time
 
 ROLES = {
-    'viewer':frozenset({'inventory.read','jobs.read','health.read'}),
-    'operator':frozenset({'inventory.read','jobs.read','health.read','jobs.write'}),
-    'administrator':frozenset({'inventory.read','jobs.read','health.read','jobs.write','devices.revoke','enrollments.read','enrollments.write','audit.read','credentials.read','credentials.write'}),
+    'viewer':frozenset({'groups.read','policies.read','inventory.read','jobs.read','health.read'}),
+    'operator':frozenset({'groups.read','policies.read','inventory.read','jobs.read','health.read','jobs.write'}),
+    'administrator':frozenset({'groups.read','policies.read','inventory.read','jobs.read','health.read','jobs.write','groups.write','policies.write','devices.revoke','enrollments.read','enrollments.write','audit.read','credentials.read','credentials.write'}),
 }
 
 class Forbidden(PermissionError):

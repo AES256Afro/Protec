@@ -28,6 +28,7 @@ function jobReceipt(job) {
 function render() {
   if (!snapshot) return;
   $('identity-label').textContent = `${snapshot.identity.name} · ${snapshot.identity.role} · ${snapshot.identity.device_ids ? snapshot.identity.device_ids.length+' selected devices' : 'Whole fleet'}`;
+  document.querySelector('[data-view="policies"]').hidden = snapshot.policy_management !== 1 || !can('policies.read');
   $('enroll').disabled = !can('enrollments.write');
   $('empty-enroll').hidden = !can('enrollments.write');
   for (const [view,permission] of [['tokens','enrollments.read'],['audit','audit.read'],['access','credentials.read'],['health','health.read']]) {
@@ -88,7 +89,8 @@ $('enrollment').addEventListener('close', () => { $('enrollment-token').value=''
 document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => {
   document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b===button));
   document.querySelectorAll('.view').forEach(view => view.hidden = view.id!==button.dataset.view);
-  $('breadcrumb').textContent = ['tokens','history','health','access'].includes(button.dataset.view) ? button.textContent.trim() : button.textContent.slice(1).trim();
+  $('breadcrumb').textContent = ['tokens','history','health','access','policies'].includes(button.dataset.view) ? button.textContent.trim() : button.textContent.slice(1).trim();
+  if (button.dataset.view==='policies' && credential) loadPolicies().catch(error => notify(error.message));
   if (button.dataset.view==='access' && credential) loadAccess().catch(error => notify(error.message));
   if (button.dataset.view==='history' && credential) loadHistory(true).catch(error => notify(error.message));
   if (button.dataset.view==='health' && credential) loadHealth().catch(error => notify(error.message));
@@ -356,3 +358,49 @@ $('schedule-form').addEventListener('submit',async event => {
     for (const id of ['schedule-start','schedule-end','schedule-submit','schedule-close','schedule-cancel']) $(id).disabled = false;
   }
 });
+
+let policyWorkspace = {groups:[],policies:[]};
+let policyCursor=null;
+const policyOptions = items => items.map(x=>`<option value="${escape(x.id)}">${escape(x.name)} · revision ${x.revision}</option>`).join('');
+async function loadPolicies() {
+  if(snapshot?.policy_management!==1 || !can('policies.read')) return;
+  const [groups,policies,compliance]=await Promise.all([api('groups'),api('policies'),api('compliance')]);
+  policyWorkspace={...groups,...policies};
+  $('group-form').hidden=!can('groups.write');$('policy-form').hidden=!can('policies.write');
+  $('group-choice').innerHTML='<option value="">New group</option>'+policyOptions(groups.groups);
+  $('policy-choice').innerHTML='<option value="">New policy</option>'+policyOptions(policies.policies);
+  $('policy-group').innerHTML=policyOptions(groups.groups);
+  $('group-choice').value='';$('policy-choice').value='';editGroup();editPolicy();
+  $('group-list').innerHTML=groups.groups.map(g=>`<p><strong>${escape(g.name)}</strong> · revision ${g.revision} · ${g.members.length} visible members${g.scope_limited?' (credential scope)':''}</p>`).join('')||'<p>No groups in scope.</p>';
+  $('policy-list').innerHTML=policies.policies.map(p=>`<p><strong>${escape(p.name)}</strong> · revision ${p.revision} · ${p.enabled?'Enabled':'Disabled'} · ${escape(p.rule.manager)} / ${escape(p.rule.package)}</p>`).join('')||'<p>No policies in scope.</p>';
+  renderCompliance(compliance,false);
+}
+function renderCompliance(compliance,append){
+  const names=new Map(policyWorkspace.policies.map(p=>[p.id,p.name]));
+  $('policy-time').textContent='Page evaluated '+date(compliance.evaluated_at)+' · '+compliance.total+' results in scope';
+  const html=compliance.results.map(r=>`<article><strong>${escape(names.get(r.policy_id)||r.policy_id)} · ${escape(r.status)}</strong><p>Device ${escape(r.device_id)} · policy revision ${r.policy_revision} · group revision ${r.group_revision}</p><p>${escape(r.reason)}</p></article>`).join('');
+  if(append)$('policy-results').insertAdjacentHTML('beforeend',html);else $('policy-results').innerHTML=html||'<p>No enabled policies have devices assigned.</p>';
+  policyCursor=compliance.next_cursor;$('policy-more').hidden=!policyCursor;
+}
+$('policy-more').onclick=async()=>{const button=$('policy-more');if(button.disabled||!policyCursor)return;button.disabled=true;try{renderCompliance(await api('compliance?cursor='+encodeURIComponent(policyCursor)),true);}catch(e){notify(e.message);}finally{button.disabled=false;}};
+
+function editGroup(){
+  const g=policyWorkspace.groups.find(g=>g.id===$('group-choice').value);
+  $('group-name').value=g?.name||'';
+  const members=new Set(g?.members||[]),devices=new Map((snapshot?.devices||[]).filter(d=>!d.revoked).map(d=>[d.id,d.inventory.hostname]));
+  for(const id of members)if(!devices.has(id))devices.set(id,id+' (outside loaded inventory or revoked)');
+  $('group-members').innerHTML=Array.from(devices,([id,name])=>`<option value="${escape(id)}" ${members.has(id)?'selected':''}>${escape(name)} · ${escape(id)}</option>`).join('');
+}
+function editPolicy(){const p=policyWorkspace.policies.find(p=>p.id===$('policy-choice').value);$('policy-name').value=p?.name||'';$('policy-group').value=p?.group_id||policyWorkspace.groups[0]?.id||'';$('policy-manager').value=p?.rule.manager||'dpkg';$('policy-package').value=p?.rule.package||'';$('policy-age').value=p?.rule.max_age_seconds||3600;$('policy-enabled').value=String(p?.enabled??true);}
+$('group-choice').onchange=editGroup;$('policy-choice').onchange=editPolicy;
+$('policy-refresh').onclick=()=>loadPolicies().catch(e=>notify(e.message));
+async function savePolicyObject(kind,body,button){
+  if(button.disabled || !can(kind+'.write') || snapshot?.policy_management!==1)return;
+  const item=policyWorkspace[kind].find(x=>x.id===$(kind==='groups'?'group-choice':'policy-choice').value);
+  if(item)Object.assign(body,{id:item.id,revision:item.revision});
+  button.disabled=true;
+  try{await api(kind,body);$(kind==='groups'?'group-choice':'policy-choice').value='';if(kind==='groups')editGroup();else editPolicy();notify('Revision saved.');try{await loadPolicies();}catch(e){notify('Revision saved, but reload failed: '+e.message);}}
+  catch(e){notify(e.message);}finally{button.disabled=false;}
+}
+$('group-form').onsubmit=event=>{event.preventDefault();return savePolicyObject('groups',{name:$('group-name').value,members:Array.from($('group-members').selectedOptions,option=>option.value)},$('group-save'));};
+$('policy-form').onsubmit=event=>{event.preventDefault();return savePolicyObject('policies',{name:$('policy-name').value,group_id:$('policy-group').value,enabled:$('policy-enabled').value==='true',rule:{kind:'package_present',manager:$('policy-manager').value,package:$('policy-package').value,max_age_seconds:Number($('policy-age').value)}},$('policy-save'));};
