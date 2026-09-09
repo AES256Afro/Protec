@@ -88,6 +88,7 @@ class MigrationTests(unittest.TestCase):
         device=store.enroll(store.enrollment()['token'],inventory());store.queue(device['id'])
         with store.connect() as db:
             db.execute('ALTER TABLE jobs DROP COLUMN not_before');db.execute('ALTER TABLE jobs DROP COLUMN not_after')
+            db.execute('DROP TABLE policy_objects')
             db.execute('PRAGMA user_version=5')
             before=[tuple(row) for row in db.execute('SELECT * FROM jobs')]
         for _ in range(2):
@@ -103,6 +104,7 @@ class MigrationTests(unittest.TestCase):
         store=Store(self.path)
         with store.connect() as db:
             db.execute('ALTER TABLE jobs DROP COLUMN not_before')
+            db.execute('DROP TABLE policy_objects')
             db.execute('PRAGMA user_version=5')
         with self.assertRaises(sqlite3.OperationalError):Store(self.path)
         with store.connect() as db:

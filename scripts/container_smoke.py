@@ -48,7 +48,7 @@ def seed():
     import os
     assert os.getuid()==10001
     health=request('/api/health',token)
-    assert health['schema_version']==6 and health['version']==VERSION
+    assert health['schema_version']==7 and health['version']==VERSION
     assert request('/healthz')['status']=='ok'
     request('/api/dashboard',expected=401)
     enrollment=request('/api/enrollments',token,{})
@@ -79,6 +79,12 @@ def seed():
     request('/api/jobs/cancel',token,{'id':scheduled})
     assert request('/api/jobs/cancel',token,{'id':scheduled})['duplicate']
     pending=request('/api/jobs',token,{'device':device['id'],'window':window})['id']
+    group=request('/api/groups',token,{'name':'Disposable pilot','members':[device['id'],other['id']]})
+    policy=request('/api/policies',token,{'name':'Git evidence','group_id':group['id'],'enabled':True,'rule':{'kind':'package_present','manager':'dpkg','package':'git','max_age_seconds':3600}})
+    compliance=request('/api/compliance',reader['token'])
+    assert compliance['total']==1 and compliance['results'][0]['device_id']==device['id']
+    assert compliance['results'][0]['status']=='unknown'
+    request('/api/groups',reader['token'],{'name':'Forbidden','members':[]},expected=403)
     snapshot=request('/api/dashboard',token)
     assert snapshot['pending']==1
     assert next(j for j in snapshot['jobs'] if j['id']==pending)['attempt']==0
@@ -94,12 +100,15 @@ def seed():
     assert restored_snapshot['devices']==snapshot['devices']
     assert restored_snapshot['jobs']==snapshot['jobs']
     assert restored_snapshot['audit']==snapshot['audit']
+    from protec.policy_store import workspace
+    assert workspace(restored_store,None,'groups')['groups'][0]['id']==group['id']
+    assert workspace(restored_store,None,'policies')['policies'][0]==policy
     for path in (DATA/'protec.db',DATA/'admin-token',checkpoint,restored):
         assert path.stat().st_mode & 0o777 == 0o600
     assert DATA.stat().st_mode & 0o777 == 0o700
     with EVIDENCE.open('x') as output:
         json.dump({'device':device,'reader':reader['token'],'completion':completion,
-                   'receipt':receipt,'snapshot':snapshot},output)
+                   'receipt':receipt,'snapshot':snapshot,'group':group,'policy':policy},output)
     EVIDENCE.chmod(0o600)
     print('PASS: bootstrap, role/scope denials, enrollment, receipt replay, window, cancellation, backup/restore, file permissions')
 
@@ -115,6 +124,8 @@ def verify():
     assert result['duplicate'] and result['receipt']==evidence['receipt']
     assert request('/api/job-receipt?job='+evidence['completion']['job'],evidence['device']['credential'])['receipt']==evidence['receipt']
     assert request('/api/dashboard',token)['audit']==snapshot['audit']
+    assert request('/api/groups',token)['groups'][0]['id']==evidence['group']['id']
+    assert request('/api/policies',token)['policies'][0]==evidence['policy']
     print('PASS: container restart preserved bootstrap, device identity, scoped credential, pending window, audit and idempotent receipt')
 
 
