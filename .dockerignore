@@ -8,3 +8,5 @@
 !static/**
 **/__pycache__
 **/*.pyc
+**/signing-key.json
+**/job-trust.json
