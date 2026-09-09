@@ -13,8 +13,8 @@ MAX_ITEMS=500
 MAX_OUTPUT=512*1024
 TIMEOUT=20
 
-def run_query(command):
-    env=dict(os.environ,HOMEBREW_NO_AUTO_UPDATE='1',HOMEBREW_NO_ANALYTICS='1',LC_ALL='C')
+def run_query(command, *, env=None):
+    env=dict(os.environ,HOMEBREW_NO_AUTO_UPDATE='1',HOMEBREW_NO_ANALYTICS='1',LC_ALL='C') if env is None else dict(env)
     chunks=[]
     size=0
     deadline=time.monotonic()+TIMEOUT
