@@ -4,7 +4,7 @@ This is the multi-year program plan for turning Protec into an open-source alter
 
 The existing [delivery roadmap](ROADMAP.md) (M0 through M15) is the 0.x implementation track and stays the source of truth for the next slices of work. This document is the destination that track is heading toward. Appendix A maps every existing milestone into the phases below so nothing already built or planned is lost.
 
-Status as of September 8, 2026: version 0.3.0 is a self-hosted inventory pilot. Enrollment, device credentials, role-scoped service credentials, package inventory, jobs with leases, audit, backup and Docker Compose deployment are implemented. Nothing in this document past Phase 1 is implemented, and the repository has no license file yet, so Protec is not open source until Phase 0 lands.
+Status verified September 9, 2026: the private portal and matching public demo run the 0.4.0 inventory pilot; 0.5.0 is published with managed rollout pending. Main also contains unreleased execution foundations and scheduling UI. See WORK_SESSION.md for exact source, image, test and deployment evidence. Existing work contributes to several phases below, but does not establish completion of those phases. This document describes the long-term destination: proposed architecture, licensing and external-program choices are not accepted decisions merely because they appear here. No license file is present; licensing remains an explicit decision.
 
 ---
 

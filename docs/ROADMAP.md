@@ -27,20 +27,19 @@ Each milestone owns one capability. Shared execution, identity, audit, schedulin
 | M14 | Agent lifecycle and native platforms: signed install/update, systemd/launchd/Windows service, Keychain/Windows protected storage, native MDM integrations | M3, M4 | Install, reboot persistence, upgrade, credential recovery and uninstall on each actual OS; Apple MDM separately verified. |
 | M15 | Fleet operations and resilience: API/CLI, notifications/webhooks, dashboards, reports, audit export, scaling and recovery | M2 through M14 incrementally | Backup restore, migration rollback, rate limiting, load tests, operator review and staged production deployment. |
 
-## Current work window
+## Current work window and next priorities
 
-The September 9 request authorizes the next four-hour work window through 2026-09-09 14:32:28 UTC (9:32 a.m. America/Chicago). The existing continuation checks this deadline, finishes at a safe documented checkpoint and pauses when the window ends. The overall platform roadmap is still incomplete; the deadline is not an acceptance gate.
+The latest September 9 request authorizes five hours from **2026-09-09 11:24:56 UTC through 16:24:56 UTC (11:24:56 a.m. America/Chicago)**. This replaces the earlier four-hour deadline and unlimited continuation instruction for this scheduled run. The existing continuation checks the deadline, closes in-flight verification safely and pauses when the window ends. The overall platform roadmap remains incomplete; elapsed time is not an acceptance gate.
 
-## Initial implementation priorities
+Following the September 9 plan review, prioritize a usable Linux management pilot:
 
-The user removed the time limit on September 8, 2026. Continue until the roadmap is implemented and its acceptance gates are verified, or concrete external dependencies prevent further independent work. The original four-hour ordering below is a sequence of priorities, not a deadline or a claim that the complete production platform fits into four hours.
+1. **Consolidate and release the tested foundations.** Verify migration/recovery, independent Docker Compose installation and the optional BoxPilot catalog path. Complete managed deployment and exact-revision public demo parity. Inspect the existing pending 0.5.0 rollout before preparing the next release; never move published tags or confuse an image publication with a live update.
+2. **Establish a disposable Linux target and persistent agent.** Implement and verify protected enrollment/state, systemd installation, service restart, update and uninstall. Actual reboot evidence is a separate gate; a container smoke test does not satisfy it. Continue this independent work while a managed rollout needs owner authentication.
+3. **Add narrow groups and policies.** Start with tags, static groups, versioned assignments and package-presence rules. Explain which policy version produced each result and report stale or missing evidence as unknown.
+4. **Deliver one complete APT package workflow.** Preview exact changes, bind approval to the device and immutable plan, execute on a disposable Ubuntu/Debian target and verify installed state. Prove interruption recovery without blindly retrying side effects. Build approvals with this workflow, rather than a standalone approval queue for read-only inventory. Different service tokens alone do not prove different human approvers.
+5. **Extend through configurations and bounded logs to network control.** Reuse the execution foundations. Test connectivity recovery before enabling network, VPN/WireGuard or SSH changes on a live target.
 
-1. **First hour:** publish the expanded plan, complete M1 enrollment lifecycle and begin M2 migrations/backup validation.
-2. **Second hour:** package inventory adapters and evidence/freshness reporting. Prioritize read-only inventory; execution depends on M3/M4.
-3. **Third hour:** policy/configuration definitions and preview workflows with explicit unsupported/unknown states. No privileged apply before its dependencies pass.
-4. **Fourth hour:** network/WireGuard and SSH capability inventory or validated plan schemas as progress allows, then integration tests, browser verification, documentation and a clean release checkpoint.
-
-If foundational work takes longer, finish and verify it before advancing. Never mark an entire milestone complete because one preparatory slice exists. Update WORK_SESSION.md after each checkpoint.
+Finish and verify bounded slices before advancing. Release consolidation and the Linux installation checkpoint are the first targets for this window; later items are ordered backlog, not a promise that the entire pilot or platform will fit into five hours. Record actual results and remaining native/deployment gates in WORK_SESSION.md.
 
 ## Cross-cutting operating rules
 
