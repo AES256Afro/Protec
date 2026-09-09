@@ -9,7 +9,7 @@ Device agents run directly on their Linux or macOS hosts and connect outbound ov
 Install Docker Engine and Compose on your server, then:
 
 ```sh
-git clone --branch v0.5.0 https://github.com/AES256Afro/Protec.git
+git clone --branch v0.6.0 https://github.com/AES256Afro/Protec.git
 cd Protec
 cp .env.example .env
 # Set PROTEC_PUBLIC_URL to the exact HTTPS origin used by your browsers and agents.
@@ -17,7 +17,7 @@ docker compose pull
 docker compose up -d --wait
 ```
 
-The example pins the published 0.5.0 release; use the release tag you intend to deploy. For a source build of that release, use `docker compose up -d --build --wait` instead. Main can contain unreleased changes, so do not build it under a published release image name. The supplied Compose file binds only to `127.0.0.1:8765`. Configure an HTTPS reverse proxy on that host, or use a private Tailscale address:
+The example pins the 0.6.0 release; use the release tag you intend to deploy. For a source build of that release, use `docker compose up -d --build --wait` instead. Main can contain unreleased changes, so do not build it under a published release image name. The supplied Compose file binds only to `127.0.0.1:8765`. Configure an HTTPS reverse proxy on that host, or use a private Tailscale address:
 
 ```sh
 sudo tailscale serve --bg --https=8765 http://127.0.0.1:8765
@@ -96,6 +96,8 @@ npx wrangler deploy --config website/wrangler.jsonc
 ```
 
 Cloudflare authentication and access to the domain are required for website publication. The authenticated BigBox management portal remains separate from this public mock site.
+
+Optional pinned job signatures are available in 0.6; see [signing and trust setup](JOB_SIGNATURES.md). Signing is not automatically enabled by the Compose or BoxPilot installation.
 
 ## Current limits
 

@@ -3,6 +3,7 @@ from protec.migrations import validate_schema
 from protec.jobs import PROJECTION as JOB_PROJECTION
 from protec.identity import device_filter, decode_scope
 import time
+from protec.version import VERSION
 
 PROJECTIONS = {
     'credentials':'id,name,role,created,expires,revoked,issued_by,device_ids,replacement_id,rotation_deadline',
@@ -59,4 +60,4 @@ def health(store,started):
     with store.connect() as db:
         schema=validate_schema(db)
         counts={kind:db.execute(f'SELECT count(*) FROM {kind}').fetchone()[0] for kind in PROJECTIONS}
-    return {'status':'ready','database':'readable','schema_version':schema,'uptime_seconds':int(time.monotonic()-started),'counts':counts}
+    return {'version':VERSION,'status':'ready','database':'readable','schema_version':schema,'uptime_seconds':int(time.monotonic()-started),'counts':counts}

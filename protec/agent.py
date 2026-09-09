@@ -15,6 +15,7 @@ from protec.packages import collect as collect_packages
 from protec.jobs import inventory_digest, validate_envelope, protocol
 from protec.agent_receipts import ReceiptJournal, ReceiptError
 from protec import capabilities
+from protec.version import VERSION
 
 def inventory():
     privileged = os.geteuid()==0 if hasattr(os,'geteuid') else False
@@ -25,7 +26,7 @@ def inventory():
     os_name = 'macOS' if system=='Darwin' else system
     version = platform.mac_ver()[0] if system=='Darwin' else platform.release()
     return {'hostname':socket.gethostname(),'os':os_name,'version':version,
-            'architecture':platform.machine(),'agent_version':'0.1.0',
+            'architecture':platform.machine(),'agent_version':VERSION,
             'privilege':'administrator' if privileged else 'standard'}
 
 def validate_server(url):

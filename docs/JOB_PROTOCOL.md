@@ -45,7 +45,7 @@ Remaining M4 work includes independently verifiable job signatures, capability a
 
 ## Unreleased: inventory refresh cancellation
 
-The source after the 0.5.0 tag adds **Cancel refresh** for queued and running inventory jobs in the dashboard and job history. This is not present in the published 0.5.0 image. The matching mock source includes a queued and a running example to exercise the controls.
+Version 0.6 adds **Cancel refresh** for queued and running inventory jobs in the dashboard and job history. This is not present in the published 0.5.0 image. The matching mock source includes a queued and a running example to exercise the controls.
 
 `POST /api/jobs/cancel` accepts `{ "id": "JOB_ID" }`. An operator or administrator must have `jobs.write` permission for the device stored on the job. A caller-supplied `device` field cannot change that authorization target. Viewers and device-agent credentials cannot cancel management jobs. Cancellation is restricted to inventory refreshes.
 
@@ -53,7 +53,7 @@ Cancellation stops subsequent delivery, invalidates any current lease and reject
 
 The status change and `inventory.cancelled` audit event commit together. The event records the caller's credential ID and the job ID. Repeating cancellation returns `duplicate: true` without another event. Completed or failed jobs cannot be rewritten, and accepted receipts are preserved. A concurrent completion and cancellation have one winner: if completion commits first, cancellation fails; if cancellation commits first, completion is rejected. Cancelled jobs remain cancelled after server restart. No schema change is required beyond schema 5.
 
-Source validation covers queued/running cancellation, both delivery protocols, scope spoofing, unauthorized callers, duplicate requests, rollback on audit failure, completion races and restart. Live rollout and native behavior are tracked separately in WORK_SESSION.md. Pending delivery of 0.5.0 remains independent of this unreleased addition.
+Source validation covers queued/running cancellation, both delivery protocols, scope spoofing, unauthorized callers, duplicate requests, rollback on audit failure, completion races and restart. Live rollout and native behavior are tracked separately in WORK_SESSION.md. Actual image and native rollout evidence is tracked in WORK_SESSION.md.
 
 ## Unreleased: agent receipt recovery
 

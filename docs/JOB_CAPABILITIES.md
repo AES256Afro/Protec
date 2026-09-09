@@ -1,6 +1,6 @@
-# Unreleased: inventory delivery capability admission
+# Inventory capability admission (0.6)
 
-Source after the 0.5.0 tag adds a bounded capability report to agent heartbeats. This is a compatibility check for dispatching read-only inventory refreshes. It is not device attestation, an operator permission, proof of administrator privileges or approval to execute privileged jobs. It is not in the published 0.5.0 image.
+Version 0.6 adds a bounded capability report to agent heartbeats. This is a compatibility check for dispatching read-only inventory refreshes. It is not device attestation, an operator permission, proof of administrator privileges or approval to execute privileged jobs. It is not in the published 0.5.0 image.
 
 ## Heartbeat contract
 

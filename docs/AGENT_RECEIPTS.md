@@ -1,6 +1,6 @@
-# Unreleased: local inventory attempt journal
+# Local agent receipts (0.6)
 
-Source after the 0.5.0 tag adds a local journal to the command-line inventory agent. It records protocol-1 job attempts and server acknowledgements across restarts. This is not in the published 0.5.0 image or agent release.
+Version 0.6 adds a local journal to the command-line inventory agent. It records protocol-1 job attempts and server acknowledgements across restarts. This is absent from 0.5.0; actual rollout is tracked in WORK_SESSION.md.
 
 The default location is `.protec/agent.json.receipts/journal.db`, beside the selected agent state file. A custom `--state` path gets its own adjacent `<state filename>.receipts` directory. The directory must be owned by the agent user with mode 0700, and the database must be a regular, single-link file owned by that user with mode 0600. Symlink targets and unsafe permissions are rejected. The journal binds to one exact control-plane origin and device ID, preventing accidental reuse after switching enrollment or server.
 

@@ -9,6 +9,7 @@ COPY requirements.txt requirements-signing.txt ./
 RUN pip install --no-cache-dir -r requirements.txt \
     && groupadd -g 10001 protec && useradd -u 10001 -g protec -M protec \
     && mkdir -m 0700 /data && chown 10001:10001 /data
+COPY VERSION ./VERSION
 COPY protec ./protec
 COPY static ./static
 USER 10001:10001
