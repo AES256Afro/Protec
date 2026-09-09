@@ -16,7 +16,7 @@ python3 -m venv .venv
   --server http://127.0.0.1:8765
 ```
 
-The output directory must be new. The command writes `signing-key.json` and `job-trust.json` with mode 0600 inside a new mode-0700 directory. It prints only the public key fingerprint. It never overwrites an existing identity. If creation is interrupted, inspect the partial directory before trying a different destination; do not assume the two-file creation is atomic. Both filenames are ignored by Git.
+The output directory must be new. The command writes `signing-key.json` and `job-trust.json` with mode 0600 inside a new mode-0700 directory. It prints only the public key fingerprint. It never overwrites an existing identity. If creation is interrupted, inspect the partial directory before trying a different destination; do not assume the two-file creation is atomic. Both filenames are ignored by Git and excluded throughout the Docker build context.
 
 Start the local control plane with the private file:
 
