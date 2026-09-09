@@ -128,3 +128,18 @@ def cancel(store,identifier,principal):
         db.execute("UPDATE jobs SET status='cancelled',lease=0,lease_hash=NULL,result='Cancelled by operator' WHERE id=?",(identifier,))
         store.audit(db,principal['id'],'inventory.cancelled',identifier)
     return {'ok':True,'id':identifier,'status':'cancelled','duplicate':False}
+
+
+def receipt_for_device(store,device,identifier):
+    """Narrow device-only reconciliation; never return delivery secrets or other targets."""
+    if not re.fullmatch(r'[0-9a-f]{24}',identifier):
+        raise ValueError('Invalid job identifier')
+    with store.connect() as db:
+        if not db.execute('SELECT 1 FROM devices WHERE id=? AND revoked=0',(device,)).fetchone():
+            raise PermissionError('Device revoked')
+        row=db.execute('SELECT id,status,attempt,receipt FROM jobs WHERE id=? AND device=?',(identifier,device)).fetchone()
+    if row is None:
+        return {'id':identifier,'status':'unknown','attempt':0,'receipt':None}
+    result=dict(row)
+    result['receipt']=json.loads(result['receipt']) if result['receipt'] else None
+    return result

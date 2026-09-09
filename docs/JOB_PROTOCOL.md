@@ -41,7 +41,7 @@ Schema 5 adds job metadata without changing earlier job records. Take a backup a
 
 On the development Mac, restart the existing inventory agent from the updated checkout after verifying the new control plane. Preserve `.protec/agent.json`, its device credential and the HTTPS origin. Verify a newly queued inventory refresh has a protocol-1 receipt; merely seeing a heartbeat does not prove the new job protocol is active.
 
-Remaining M4 work includes independently verifiable job signatures, durable local execution receipts, capability admission for additional job kinds, cancellation, approvals, maintenance windows and side-effect-specific recovery. This milestone does not claim exactly-once execution or a privileged execution framework. Native agent service installation and protected credential storage remain separate milestones.
+Remaining M4 work includes independently verifiable job signatures, capability admission for additional job kinds, approvals, maintenance windows and side-effect-specific recovery. Unreleased cancellation and local inventory receipt recovery are described below. This milestone does not claim exactly-once execution or a privileged execution framework. Native agent service installation and protected credential storage remain separate milestones.
 
 ## Unreleased: inventory refresh cancellation
 
@@ -54,3 +54,7 @@ Cancellation stops subsequent delivery, invalidates any current lease and reject
 The status change and `inventory.cancelled` audit event commit together. The event records the caller's credential ID and the job ID. Repeating cancellation returns `duplicate: true` without another event. Completed or failed jobs cannot be rewritten, and accepted receipts are preserved. A concurrent completion and cancellation have one winner: if completion commits first, cancellation fails; if cancellation commits first, completion is rejected. Cancelled jobs remain cancelled after server restart. No schema change is required beyond schema 5.
 
 Source validation covers queued/running cancellation, both delivery protocols, scope spoofing, unauthorized callers, duplicate requests, rollback on audit failure, completion races and restart. Live rollout and native behavior are tracked separately in WORK_SESSION.md. Pending delivery of 0.5.0 remains independent of this unreleased addition.
+
+## Unreleased: agent receipt recovery
+
+The command-line agent now records protocol-1 inventory attempts in a private SQLite journal beside its state file. A device-scoped receipt lookup allows a restarted agent to reconcile a completion whose HTTP response was lost, without sending another completion. The journal contains validated metadata, not bearer credentials or lease tokens. See [local agent receipts](AGENT_RECEIPTS.md) for file protection, states, capacity, compatibility and verification limits. This addition follows the 0.5.0 tag and does not change the control-plane schema.

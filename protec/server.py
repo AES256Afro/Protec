@@ -78,7 +78,7 @@ class Store:
                 raise PermissionError('Device revoked')
             db.execute('UPDATE devices SET inventory=?,seen=? WHERE id=?', (json.dumps(inventory),time.time(),device))
             delivered=job_contracts.deliver(db,self,device,job_protocol)
-        return {'jobs':delivered,'job_protocol':job_protocol}
+        return {'jobs':delivered,'job_protocol':job_protocol,'receipt_lookup':1}
     def queue(self, device, actor='administrator'):
         job = secrets.token_hex(12)
         with self.connect() as db:
@@ -166,6 +166,10 @@ class Handler(BaseHTTPRequestHandler):
                 principal=self.access(permission)
                 cursor = query.get('cursor',[None])[0]
                 return self.reply(200,page(self.server.store,kind,int(query.get('limit',['50'])[0]),int(cursor) if cursor is not None else None,device_ids=principal.get('device_ids')))
+            if path=='/api/job-receipt':
+                device=self.server.store.identify(self.bearer())
+                identifier=parse_qs(url.query).get('job',[''])[0]
+                return self.reply(200,job_contracts.receipt_for_device(self.server.store,device,identifier))
             if path=='/api/health':
                 self.access('health.read')
                 return self.reply(200,health(self.server.store,self.server.started))
