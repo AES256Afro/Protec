@@ -28,6 +28,10 @@ def exercise(device,name):
         except ValueError:pass
         else:raise AssertionError('Insecure execution policy was accepted')
         policy_file.chmod(0o600)
+        def acknowledge_fixture(job,result):
+            from protec.jobs import inventory_digest
+            # Fictional control-plane receipt for this isolated core test only.
+            journal.acknowledge(job,{'version':1,'job':job['id'],'device':device,'kind':'apply_packages','attempt':1,'outcome':result['outcome'],'result_sha256':inventory_digest(result),'recorded_at':time.time()})
         def job_for(request):
             plan=preview(request,device)
             approval={'id':secrets.token_hex(12),'approved_by':'disposable-test-administrator','approved_at':int(time.time()),'expires':plan['expires'],'plan_sha256':plan['plan_sha256']}
@@ -39,9 +43,13 @@ def exercise(device,name):
         try:run_change(job,proof,device,trust,policy,journal)
         except ReceiptError:pass
         else:raise AssertionError('Signed mutation replay was accepted')
+        recovered=ReceiptJournal(directory,origin,device).mutation_result(job['id'])
+        assert recovered==result
+        acknowledge_fixture(job,result)
         job,proof=job_for({'action':'remove','packages':[{'name':name}]})
         result=run_change(job,proof,device,trust,policy,journal)
         assert result['outcome']=='succeeded' and result['observed']==[{'name':name,'version':None}],result
+        acknowledge_fixture(job,result)
         interrupted,proof=job_for({'action':'install','packages':[{'name':name,'version':'1.0'}]})
         payload=temporary/'interrupted.json'
         payload.write_text(json.dumps({'job':interrupted,'proof':proof,'device':device,'origin':origin,'keys':str(keys),'journal':str(directory),'policy':policy}));payload.chmod(0o600)
@@ -52,7 +60,7 @@ from protec.package_changes import run_change
 from pathlib import Path
 p=json.loads(Path(sys.argv[1]).read_text())
 journal=ReceiptJournal(p['journal'],p['origin'],p['device'])
-journal.reported=lambda *args:os._exit(73)
+journal.mutation_reported=lambda *args:os._exit(73)
 run_change(p['job'],p['proof'],p['device'],Trust.load(Path(p['keys'])/'job-trust.json',p['origin']),p['policy'],journal)
 """
         crash=subprocess.run(['/usr/bin/python3','-c',child,str(payload)],capture_output=True,text=True,timeout=90)
@@ -64,4 +72,4 @@ run_change(p['job'],p['proof'],p['device'],Trust.load(Path(p['keys'])/'job-trust
         try:run_change(interrupted,proof,device,trust,policy,journal)
         except ReceiptError:pass
         else:raise AssertionError('Interrupted mutation was automatically executed again')
-    return {'signed_upgrade_verified':True,'signed_remove_verified':True,'signed_install_verified':True,'replay_refused':True,'crash_after_change_retained':True,'interrupted_retry_refused':True}
+    return {'signed_upgrade_verified':True,'signed_remove_verified':True,'signed_install_verified':True,'replay_refused':True,'crash_after_change_retained':True,'interrupted_retry_refused':True,'full_result_recovered':True}

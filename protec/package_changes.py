@@ -43,6 +43,26 @@ def load_policy(path):
     return validate_policy(protected_document(path))
 
 
+def validate_result(result):
+    if not isinstance(result,dict) or result.get('outcome') not in ('succeeded','refused','uncertain') or not isinstance(result.get('plan_sha256'),str) or not re.fullmatch('[0-9a-f]{64}',result['plan_sha256']):
+        raise ReceiptError('Invalid package change result')
+    if set(result)=={'outcome','plan_sha256','reason'}:
+        reasons={'refused':'preflight_refused','uncertain':'execution_or_verification_failed'}
+        if result['outcome'] not in reasons or result['reason']!=reasons[result['outcome']]:
+            raise ReceiptError('Invalid package change failure result')
+    elif set(result)=={'outcome','plan_sha256','observed'} and result['outcome'] in ('succeeded','uncertain'):
+        observed=result['observed']
+        if not isinstance(observed,list) or len(observed)>100:raise ReceiptError('Invalid observed packages')
+        names=set()
+        for item in observed:
+            if (not isinstance(item,dict) or set(item)!={'name','version'} or not isinstance(item['name'],str) or not re.fullmatch(PACKAGE,item['name']) or item['name'] in names or
+                    (item['version'] is not None and (not isinstance(item['version'],str) or not 1<=len(item['version'])<=200 or not re.fullmatch('[A-Za-z0-9.+:~_-]+',item['version'])))):
+                raise ReceiptError('Invalid observed package version')
+            names.add(item['name'])
+    else:raise ReceiptError('Invalid package change result fields')
+    return result
+
+
 def run_change(job,proof,device,trust,policy,journal):
     """One signed attempt; any recorded attempt blocks automatic execution again.
 
@@ -96,5 +116,5 @@ acknowledgement must come from the control plane in a subsequent integration.
         result={'outcome':'uncertain' if attempted else 'refused','plan_sha256':plan['plan_sha256'],'reason':'execution_or_verification_failed' if attempted else 'preflight_refused'}
     # A process interruption before this durable write leaves a started record.
     # It must be reconciled, never treated as permission to execute again.
-    journal.reported(job,inventory_digest(result))
+    journal.mutation_reported(job,result)
     return result
