@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 from protec.packages import collect as collect_packages
 from protec.jobs import inventory_digest, validate_envelope, protocol
+from protec.agent_receipts import ReceiptJournal, ReceiptError
 
 def inventory():
     privileged = os.geteuid()==0 if hasattr(os,'geteuid') else False
@@ -46,7 +47,7 @@ def tls_context():
     return context
 
 def request(server,path,token,body):
-    req = Request(server+path,json.dumps(body).encode(),{'Authorization':'Bearer '+token,'Content-Type':'application/json'})
+    req = Request(server+path,None if body is None else json.dumps(body).encode(),{'Authorization':'Bearer '+token,'Content-Type':'application/json'})
     # Do not follow redirects with an endpoint credential.
     from urllib.request import HTTPRedirectHandler, HTTPSHandler, build_opener
     class NoRedirect(HTTPRedirectHandler):
@@ -55,7 +56,7 @@ def request(server,path,token,body):
     with build_opener(NoRedirect,HTTPSHandler(context=tls_context())).open(req,timeout=15) as response:
         return json.load(response)
 
-def cycle(state):
+def cycle(state,journal=None):
     fresh = time.monotonic()-state.get('_package_scan',float('-inf'))>=300
     if fresh:
         state['_packages']=collect_packages()
@@ -69,6 +70,12 @@ def cycle(state):
     jobs=[validate_envelope(job,state.get('id')) for job in response['jobs']]
     if any(job.get('version',0)!=negotiated for job in jobs):
         raise ValueError('Delivered job does not match the negotiated protocol')
+    if journal is not None:
+        if type(response.get('receipt_lookup')) is int and response['receipt_lookup']==1:
+            for record in journal.pending():
+                result=request(state['server'],'/api/job-receipt?job='+record['job'],state['credential'],None)
+                journal.reconcile(record,result)
+        jobs=[job for job in jobs if job.get('version')!=1 or journal.begin(job)]
     if jobs and not fresh:
         state['_packages']=collect_packages()
         state['_package_scan']=time.monotonic()
@@ -79,7 +86,11 @@ def cycle(state):
         if job.get('version')==1:
             validate_envelope(job,state.get('id'))
             completion.update(version=1,attempt=job['attempt'],lease_token=job['lease']['token'],result={'outcome':'succeeded','inventory_sha256':inventory_digest(current)})
-        request(state['server'],'/api/complete',state['credential'],completion)
+        if journal is not None and job.get('version')==1:
+            journal.reported(job,completion['result']['inventory_sha256'])
+        result=request(state['server'],'/api/complete',state['credential'],completion)
+        if journal is not None and job.get('version')==1:
+            journal.acknowledge(job,result.get('receipt') if isinstance(result,dict) else None)
     return len(response['jobs'])
 
 def main():
@@ -88,8 +99,11 @@ def main():
     parser.add_argument('--state',type=Path,default=Path('.protec/agent.json'))
     parser.add_argument('--enroll',action='store_true')
     parser.add_argument('--once',action='store_true')
+    parser.add_argument('--receipt-status',action='store_true',help='Print local receipt metadata without contacting the control plane')
     args = parser.parse_args()
     os.umask(0o077)
+    if args.receipt_status and args.enroll:
+        parser.error('--receipt-status cannot be combined with --enroll')
     if args.enroll:
         if args.state.exists():
             raise SystemExit('State already exists; use another state path for a separate enrollment')
@@ -105,12 +119,23 @@ def main():
         print('Enrolled device '+state['id'])
     state = json.loads(args.state.read_text())
     state['server'] = validate_server(state['server'])
+    try:
+        journal=ReceiptJournal(args.state.with_name(args.state.name+'.receipts'),state['server'],state['id'])
+    except (ReceiptError,OSError) as error:
+        raise SystemExit('Cannot open local receipt journal: '+str(error)) from None
+    if args.receipt_status:
+        print(json.dumps(journal.status(),indent=2))
+        return
     while True:
         try:
-            count = cycle(state)
+            count = cycle(state,journal)
             print(f'Inventory sent; {count} job(s) received',flush=True)
         except URLError as error:
             print(f'Check-in failed: {error.reason}',flush=True)
+            if args.once:
+                raise SystemExit(1)
+        except (ReceiptError,OSError):
+            print('Local receipt processing failed; job acknowledgement withheld',flush=True)
             if args.once:
                 raise SystemExit(1)
         except ValueError:
