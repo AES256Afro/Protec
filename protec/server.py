@@ -21,7 +21,8 @@ def digest(value):
     return hashlib.sha256(value.encode()).hexdigest()
 
 class Store:
-    def __init__(self, path):
+    def __init__(self, path, job_signer=None):
+        self.job_signer=job_signer
         self.path = str(path)
         with self.connect() as db:
             migrate(db)
@@ -79,7 +80,8 @@ class Store:
                 raise PermissionError('Device revoked')
             db.execute('UPDATE devices SET inventory=?,seen=? WHERE id=?', (json.dumps(inventory),time.time(),device))
             delivered=job_contracts.deliver(db,self,device,job_protocol,admitted)
-        return {'jobs':delivered,'job_protocol':job_protocol,'receipt_lookup':1,'capability_admission':1}
+            proofs={job['id']:self.job_signer.sign(job) for job in delivered if job.get('version')==1} if self.job_signer else None
+        return {'jobs':delivered,'job_protocol':job_protocol,'receipt_lookup':1,'capability_admission':1,**({'job_signatures':proofs} if proofs is not None else {})}
     def queue(self, device, actor='administrator'):
         job = secrets.token_hex(12)
         with self.connect() as db:
@@ -256,10 +258,10 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             self.reply(500,{'error':'Internal server error'})
 
-def make_server(path, token, port=8765):
+def make_server(path, token, port=8765, job_signer=None):
     server = ThreadingHTTPServer(('127.0.0.1',port),Handler)
     server.started = time.monotonic()
-    server.store = Store(path)
+    server.store = Store(path,job_signer)
     server.admin_token = token
     return server
 
@@ -267,6 +269,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--port',type=int,default=8765)
     parser.add_argument('--data',type=Path,default=Path('.protec'))
+    parser.add_argument('--job-signing-key',type=Path,help='Optional protected signing key file for inventory delivery')
     args = parser.parse_args()
     os.umask(0o077)
     args.data.mkdir(mode=0o700,parents=True,exist_ok=True)
@@ -276,7 +279,11 @@ def main():
     token = token_path.read_text().strip()
     if len(token)<32:
         raise SystemExit('Administrator token must contain at least 32 characters')
-    server = make_server(args.data/'protec.db',token,args.port)
+    signer=None
+    if args.job_signing_key:
+        from protec.job_signatures import Signer
+        signer=Signer.load(args.job_signing_key)
+    server = make_server(args.data/'protec.db',token,args.port,signer)
     print(f'Protec: http://127.0.0.1:{args.port}\nAdministrator token file: {token_path.resolve()}',flush=True)
     try:
         server.serve_forever()
