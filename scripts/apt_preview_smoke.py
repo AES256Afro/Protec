@@ -52,6 +52,18 @@ def main():
         run('/usr/bin/dpkg','--install',str(repo/f'{name}_1.0_all.deb'));installed=True
         before=status_digest()
         upgrade=preview(request('2.0'),device)
+        from protec.apt_revalidate import inspect_plan,locked_plan
+        assert inspect_plan(upgrade,device)['executed'] is False
+        with locked_plan(upgrade,device):
+            competing=subprocess.run(['/usr/bin/python3','-c','import apt_pkg; apt_pkg.init(); apt_pkg.pkgsystem_lock()'],capture_output=True,text=True,timeout=10)
+            assert competing.returncode!=0,'A competing process acquired held package locks'
+        from protec.jobs import inventory_digest
+        changed=json.loads(json.dumps(upgrade));changed['artifacts'][0]['sha256']='e'*64
+        changed['plan_sha256']=inventory_digest({k:v for k,v in changed.items() if k!='plan_sha256'})
+        try:inspect_plan(changed,device)
+        except ValueError:pass
+        else:raise AssertionError('Changed artifact was accepted')
+        assert upgrade['version']==2 and len(upgrade['artifacts'])==1
         assert upgrade['changes']==[{'name':name,'before':'1.0','after':'2.0','action':'change_version'}],upgrade['changes']
         removal=preview({'action':'remove','packages':[{'name':name}]},device)
         assert removal['changes']==[{'name':name,'before':'1.0','after':None,'action':'remove'}],removal['changes']
@@ -81,7 +93,7 @@ def main():
                 assert status_digest()==before
             finally:
                 plane.shutdown();plane.server_close();thread.join()
-        print(json.dumps({'remote_roundtrip':True,'local_receipt':True,'native_apt' :upgrade['apt_version'],'install_preview':True,'upgrade_preview':True,'remove_preview':True,'noop_preview':True,'unchanged_by_previews':True}))
+        print(json.dumps({'competing_lock_denied':True,'artifact_change_denied':True,'locked_revalidation':True,'remote_roundtrip':True,'local_receipt':True,'native_apt' :upgrade['apt_version'],'install_preview':True,'upgrade_preview':True,'remove_preview':True,'noop_preview':True,'unchanged_by_previews':True}))
     finally:
         if installed:run('/usr/bin/dpkg','--purge',name)
         source.unlink(missing_ok=True)

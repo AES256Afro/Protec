@@ -37,14 +37,14 @@ class AptPreviewTests(unittest.TestCase):
             with self.assertRaises(ValueError):parse_simulation(output)
 
     def test_preview_digest_binds_device_request_changes_and_state(self):
-        with patch('protec.apt_preview.platform.system',return_value='Linux'),patch('protec.apt_preview.Path.is_file',return_value=True),patch('protec.apt_preview.status_digest',return_value='a'*64),patch('protec.apt_preview.run_query',side_effect=['Package: fixture\nVersion: 1.0\nArchitecture: all\n','2.7.14',INSTALL]) as query:
+        with patch('protec.apt_preview.platform.system',return_value='Linux'),patch('protec.apt_preview.Path.is_file',return_value=True),patch('protec.apt_preview.status_digest',return_value='a'*64),patch('protec.apt_preview.run_query',side_effect=['Package: fixture\nVersion: 1.0\nArchitecture: all\nSHA256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nSize: 100\n','2.7.14',INSTALL]) as query:
             result=preview(self.request(),'b'*24)
         digest=result.pop('plan_sha256');self.assertEqual(digest,inventory_digest(result))
         self.assertTrue(result['requires_revalidation']);self.assertEqual(result['expires']-result['created'],900)
         self.assertNotIn('APT_CONFIG',query.call_args.kwargs['env'])
 
     def test_concurrent_dpkg_change_refuses_plan(self):
-        with patch('protec.apt_preview.platform.system',return_value='Linux'),patch('protec.apt_preview.Path.is_file',return_value=True),patch('protec.apt_preview.status_digest',side_effect=['a'*64,'b'*64]),patch('protec.apt_preview.run_query',side_effect=['Package: fixture\nVersion: 1.0\nArchitecture: all\n','2.7.14',INSTALL]):
+        with patch('protec.apt_preview.platform.system',return_value='Linux'),patch('protec.apt_preview.Path.is_file',return_value=True),patch('protec.apt_preview.status_digest',side_effect=['a'*64,'b'*64]),patch('protec.apt_preview.run_query',side_effect=['Package: fixture\nVersion: 1.0\nArchitecture: all\nSHA256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nSize: 100\n','2.7.14',INSTALL]):
             with self.assertRaisesRegex(ValueError,'changed during'):preview(self.request(),'b'*24)
 
     def test_mac_never_invokes_apt(self):
@@ -53,13 +53,13 @@ class AptPreviewTests(unittest.TestCase):
             query.assert_not_called()
 
     def test_exact_metadata_gate_rejects_pattern_fallback(self):
-        with patch('protec.apt_preview.run_query',return_value='Package: fixture-other\nVersion: 1.0\nArchitecture: all\n'):
+        with patch('protec.apt_preview.run_query',return_value='Package: fixture-other\nVersion: 1.0\nArchitecture: all\nSHA256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nSize: 100\n'):
             with self.assertRaises(ValueError):verify_selections(self.request(),{})
         with patch('protec.apt_preview.run_query',return_value='fixture-other\tall\tinstalled\n'):
             with self.assertRaises(ValueError):verify_selections({'action':'remove','packages':[{'name':'fixture'}]}, {})
 
     def test_plan_validation_rejects_tampering_expiry_and_wrong_device(self):
-        with patch('protec.apt_preview.platform.system',return_value='Linux'),patch('protec.apt_preview.Path.is_file',return_value=True),patch('protec.apt_preview.status_digest',return_value='a'*64),patch('protec.apt_preview.run_query',side_effect=['Package: fixture\nVersion: 1.0\nArchitecture: all\n','2.7.14',INSTALL]):
+        with patch('protec.apt_preview.platform.system',return_value='Linux'),patch('protec.apt_preview.Path.is_file',return_value=True),patch('protec.apt_preview.status_digest',return_value='a'*64),patch('protec.apt_preview.run_query',side_effect=['Package: fixture\nVersion: 1.0\nArchitecture: all\nSHA256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nSize: 100\n','2.7.14',INSTALL]):
             plan=preview(self.request(),'b'*24)
         self.assertEqual(validate_plan(plan,'b'*24),plan)
         for changed in [{**plan,'device':'c'*24},{**plan,'changes':[]},{**plan,'created':True},{**plan,'requires_revalidation':False}]:
@@ -73,3 +73,11 @@ class AptPreviewTests(unittest.TestCase):
         start=time.monotonic()
         with self.assertRaises(ValueError):run_query([sys.executable,'-c','import time; time.sleep(5)'],deadline=start+0.05)
         self.assertLess(time.monotonic()-start,2)
+
+    def test_artifacts_require_one_exact_hash_and_match_every_install(self):
+        from protec.apt_preview import artifact_manifest
+        changes=[{'name':'fixture','after':'1.0'}]
+        record={'Package':'fixture','Version':'1.0','Architecture':'all','SHA256':'a'*64,'Size':'100'}
+        self.assertEqual(artifact_manifest(changes,{('fixture','1.0'):[record]}, {},None)[0]['sha256'],'a'*64)
+        for records in ([{**record,'SHA256':''}],[record,{**record,'SHA256':'b'*64}]):
+            with self.assertRaises(ValueError):artifact_manifest(changes,{('fixture','1.0'):records},{},None)

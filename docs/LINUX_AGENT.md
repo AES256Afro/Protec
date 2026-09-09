@@ -60,3 +60,8 @@ If enrollment created state but the first check-in failed, resolve connectivity/
 The scenarios cover non-root execution, real dpkg inventory, protected enrollment/source, receipts, symlinked-source rejection, duplicate enrollment refusal, failed activation rollback, code update/repeated installation, actual reboot persistence and uninstall/reinstall with the same device identity. Synthetic 0.6.98/0.6.99 test versions exist only in the guest. See WORK_SESSION.md for actual results and limitations.
 
 The initial lab uses a Canonical [Ubuntu 24.04 cloud image](https://cloud-images.ubuntu.com/releases/noble/release/) with a verified SHA-256 from the same HTTPS source and a [NoCloud seed](https://docs.cloud-init.io/en/latest/reference/datasources/nocloud.html). Software-emulated QEMU avoids changing host KVM permissions. Its disk is isolated; guest-initiated network access is restricted and the SSH test forward binds to host loopback. No Mac or BigBox host agent is installed by this test.
+
+
+### Receipt schema upgrades and rollback boundary
+
+Source after 0.6 uses local receipt schema 2 for package preview results. Older agent code may refuse that journal after a migration. The current installer's failed-activation fallback restores code and the unit only; it does not restore or merge receipt state. Before a cross-schema service upgrade, preserve a stopped, consistent copy of the enrollment state and journal and test the actual older-code recovery path. Automated journal-aware recovery is an open release gate, especially before introducing package mutations. Do not treat the earlier same-schema rollback test as proof of cross-schema recovery. No real managed agent has been upgraded to this schema in the recorded rollout.
