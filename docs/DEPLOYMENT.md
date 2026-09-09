@@ -37,7 +37,7 @@ The default image runs as UID/GID `10001:10001`. Compose uses a named persistent
 
 ## BoxPilot app catalog
 
-Update BoxPilot to **1.116.0 or later**, which includes `catalog/protec.yaml`, then open **App catalog**, search **Protec**, and select **Install**.
+Update BoxPilot to **1.116.4 or later**, which includes the Protec 0.6 entry in `catalog/protec.yaml`, then open **App catalog**, search **Protec**, and select **Install**.
 
 1. Plan a private Tailscale HTTPS address, or prepare an HTTPS reverse proxy on the host.
 2. Enter the exact **Portal HTTPS origin**, including the chosen port. Default port: 8765.
