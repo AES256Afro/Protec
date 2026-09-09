@@ -1,4 +1,4 @@
-"""Owner-only local inventory attempt journal. Contains no bearer or lease tokens."""
+"""Owner-only local typed attempt journal. Contains no bearer or lease tokens."""
 from contextlib import contextmanager
 import json
 import math
@@ -28,9 +28,9 @@ def validate_receipt(receipt,device,job):
     key='inventory_sha256' if kind=='refresh_inventory' else 'result_sha256'
     keys={'version','job','device','kind','attempt','outcome',key,'recorded_at'}
     if (set(receipt)!=keys or type(receipt['version']) is not int or receipt['version']!=1 or
-            receipt['job']!=job or receipt['device']!=device or kind not in ('refresh_inventory','preview_packages') or
-            type(receipt['attempt']) is not int or not 1<=receipt['attempt']<=3 or
-            receipt['outcome'] not in (('succeeded',) if kind=='refresh_inventory' else ('succeeded','unavailable')) or
+            receipt['job']!=job or receipt['device']!=device or kind not in ('refresh_inventory','preview_packages','apply_packages') or
+            type(receipt['attempt']) is not int or not 1<=receipt['attempt']<=3 or (kind=='apply_packages' and receipt['attempt']!=1) or
+            receipt['outcome'] not in (('succeeded',) if kind=='refresh_inventory' else ('succeeded','refused','uncertain') if kind=='apply_packages' else ('succeeded','unavailable')) or
             not isinstance(receipt[key],str) or not re.fullmatch(r'[0-9a-f]{64}',receipt[key]) or
             type(receipt['recorded_at']) not in (int,float) or not math.isfinite(receipt['recorded_at']) or receipt['recorded_at']<0):
         raise ReceiptError('Invalid server completion receipt')
@@ -49,6 +49,7 @@ class ReceiptJournal:
         if (not re.fullmatch(r'[0-9a-f]{24}',device) or url.scheme not in ('http','https') or not url.hostname or
                 url.username or url.password or url.path not in ('','/') or url.query or url.fragment):
             raise ReceiptError('Invalid journal identity binding')
+        self.server=server.rstrip('/')
         if os.name!='posix':
             raise ReceiptError('Local receipts require POSIX file protection in this release')
         try:
@@ -130,7 +131,7 @@ class ReceiptJournal:
 
     def reported(self,job,digest):
         if not isinstance(digest,str) or not re.fullmatch(r'[0-9a-f]{64}',digest):
-            raise ReceiptError('Invalid local inventory digest')
+            raise ReceiptError('Invalid local result digest')
         with self.connect() as db:
             if not db.execute("UPDATE attempts SET state='completion_pending',inventory_sha256=?,result_sha256=?,updated=? WHERE job=? AND attempt=? AND state='started'",(digest if job['kind']=='refresh_inventory' else None,digest,self.clock(),job['id'],job['attempt'])).rowcount:
                 raise ReceiptError('Local attempt was not started')
