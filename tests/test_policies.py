@@ -55,7 +55,7 @@ class PackagePolicyTests(unittest.TestCase):
             device=deepcopy(self.device);device['inventory']['packages'].update(change)
             with self.subTest(change=change):self.assertEqual(evaluate(self.rule,device,now=self.now)['status'],'unknown')
     def test_future_nonfinite_boolean_and_missing_times_are_unknown(self):
-        for value in (None,True,float('nan'),float('inf'),0,self.now+301):
+        for value in (None,True,float('nan'),float('inf'),10**1000,0,self.now+301):
             for target in ('seen','collected_at'):
                 device=deepcopy(self.device)
                 if target=='seen':device['seen']=value
