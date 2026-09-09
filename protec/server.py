@@ -81,18 +81,26 @@ class Store:
             db.execute('UPDATE devices SET inventory=?,seen=? WHERE id=?', (json.dumps(inventory),time.time(),device))
             delivered=job_contracts.deliver(db,self,device,job_protocol,admitted)
             proofs={job['id']:self.job_signer.sign(job) for job in delivered if job.get('version')==1} if self.job_signer else None
-        return {'jobs':delivered,'job_protocol':job_protocol,'receipt_lookup':1,'capability_admission':1,**({'job_signatures':proofs} if proofs is not None else {})}
-    def queue(self, device, actor='administrator', window=None):
+        return {'jobs':delivered,'job_protocol':job_protocol,'receipt_lookup':1,'capability_admission':1,'package_previews':1,**({'job_signatures':proofs} if proofs is not None else {})}
+    def queue(self, device, actor='administrator', window=None, *, package_request=None):
+        kind='refresh_inventory'
+        payload={}
+        if package_request is not None:
+            from protec.apt_preview import validate_request
+            payload=validate_request(package_request);kind='preview_packages'
         not_before,not_after=job_windows.validate(window)
         job = secrets.token_hex(12)
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             if not db.execute('SELECT id FROM devices WHERE id=? AND revoked=0',(device,)).fetchone():
                 raise ValueError('Active device not found')
+            if package_request is not None:
+                inv=json.loads(db.execute('SELECT inventory FROM devices WHERE id=?',(device,)).fetchone()[0])
+                if inv.get('apt_preview')!=1 or inv.get('os')!='Linux':raise ValueError('Device has not reported APT preview support')
             if db.execute("SELECT id FROM jobs WHERE device=? AND status IN ('queued','running')",(device,)).fetchone():
-                raise ValueError('An inventory refresh is already pending')
-            db.execute('INSERT INTO jobs(id,device,kind,status,created,lease,result,issued_by,not_before,not_after) VALUES (?,?,?,?,?,?,?,?,?,?)',(job,device,'refresh_inventory','queued',time.time(),0,None,actor,not_before,not_after))
-            self.audit(db,actor,'inventory.requested',device)
+                raise ValueError('A device action is already pending')
+            db.execute('INSERT INTO jobs(id,device,kind,status,created,lease,result,issued_by,not_before,not_after,payload) VALUES (?,?,?,?,?,?,?,?,?,?,?)',(job,device,kind,'queued',time.time(),0,None,actor,not_before,not_after,json.dumps(payload)))
+            self.audit(db,actor,'packages.preview_requested' if package_request is not None else 'inventory.requested',device)
         return {'id':job}
     def complete(self, device, job, body=None):
         return job_contracts.complete(self,device,job,body or {})
@@ -128,6 +136,9 @@ def inventory_input(body):
         result[key] = value
     if result['privilege'] not in ('administrator','standard'):
         raise ValueError('Invalid privilege')
+    if 'apt_preview' in inv:
+        if type(inv['apt_preview']) is not int or inv['apt_preview'] not in (0,1):raise ValueError('Invalid APT preview capability')
+        result['apt_preview']=inv['apt_preview']
     if 'packages' in inv:
         result['packages']=validate_report(inv['packages'])
     return result
@@ -191,7 +202,7 @@ class Handler(BaseHTTPRequestHandler):
             if path=='/api/dashboard':
                 principal=self.access('inventory.read')
                 data=self.server.store.snapshot(include_audit='audit.read' in principal['permissions'],device_ids=principal.get('device_ids'))
-                return self.reply(200,{**data,'identity':principal,'policy_management':1})
+                return self.reply(200,{**data,'identity':principal,'policy_management':1,'package_previews':1})
             assets = {'/':('index.html','text/html; charset=utf-8'),'/app.js':('app.js','text/javascript'),'/style.css':('style.css','text/css')}
             if path in assets:
                 name, mime = assets[path]
@@ -229,13 +240,17 @@ class Handler(BaseHTTPRequestHandler):
             elif path=='/api/complete':
                 result = store.complete(store.identify(self.bearer()),str(body.get('job','')),body)
             else:
-                permissions={'/api/groups':'groups.write','/api/policies':'policies.write','/api/enrollments':'enrollments.write','/api/enrollments/revoke':'enrollments.write','/api/jobs':'jobs.write','/api/jobs/cancel':'jobs.write','/api/revoke':'devices.revoke','/api/credentials':'credentials.write','/api/credentials/revoke':'credentials.write','/api/credentials/rotate':'credentials.write','/api/credentials/rotation/finish':'credentials.write','/api/credentials/rotation/cancel':'credentials.write'}
+                permissions={'/api/package-previews':'jobs.write','/api/groups':'groups.write','/api/policies':'policies.write','/api/enrollments':'enrollments.write','/api/enrollments/revoke':'enrollments.write','/api/jobs':'jobs.write','/api/jobs/cancel':'jobs.write','/api/revoke':'devices.revoke','/api/credentials':'credentials.write','/api/credentials/revoke':'credentials.write','/api/credentials/rotate':'credentials.write','/api/credentials/rotation/finish':'credentials.write','/api/credentials/rotation/cancel':'credentials.write'}
                 if path not in permissions:
                     return self.reply(404,{'error':'Not found'})
-                target=str(body.get('device','')) if path in ('/api/jobs','/api/revoke') else None
+                target=str(body.get('device','')) if path in ('/api/jobs','/api/revoke','/api/package-previews') else None
                 principal=self.access(permissions[path],target)
                 actor=principal['id']
-                if path in ('/api/groups','/api/policies'):
+                if path=='/api/package-previews':
+                    if set(body)!={'device','request'}:raise ValueError('Supply device and package request')
+                    if body['request'] is None:raise ValueError('Package request is required')
+                    result=store.queue(target,actor,package_request=body['request'])
+                elif path in ('/api/groups','/api/policies'):
                     result=policy_store.save(store,path.rsplit('/',1)[1],body,actor)
                 elif path=='/api/enrollments':
                     result = store.enrollment(actor)

@@ -48,6 +48,8 @@ def page(store,kind,limit=50,cursor=None,device_ids=None):
             row['inventory']=json.loads(row['inventory'])
         elif kind=='jobs':
             row['receipt']=json.loads(row['receipt']) if row['receipt'] else None
+            row['payload']=json.loads(row['payload'])
+            row['preview']=json.loads(row['preview']) if row['preview'] else None
         elif kind=='credentials':
             row['device_ids']=decode_scope(row['device_ids'])
             row['status']='revoked' if row.pop('revoked') else 'expired' if row['expires']<=now else 'rotating' if row['rotation_deadline'] is not None and row['rotation_deadline']>now else 'rotated' if row['rotation_deadline'] is not None else 'active'

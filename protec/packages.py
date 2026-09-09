@@ -13,11 +13,11 @@ MAX_ITEMS=500
 MAX_OUTPUT=512*1024
 TIMEOUT=20
 
-def run_query(command, *, env=None):
+def run_query(command, *, env=None, deadline=None):
     env=dict(os.environ,HOMEBREW_NO_AUTO_UPDATE='1',HOMEBREW_NO_ANALYTICS='1',LC_ALL='C') if env is None else dict(env)
     chunks=[]
     size=0
-    deadline=time.monotonic()+TIMEOUT
+    deadline=min(time.monotonic()+TIMEOUT,deadline) if deadline is not None else time.monotonic()+TIMEOUT
     with subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,env=env,start_new_session=True) as process:
         try:
             with selectors.DefaultSelector() as selector:

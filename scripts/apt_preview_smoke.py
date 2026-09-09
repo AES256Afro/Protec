@@ -58,7 +58,30 @@ def main():
         assert preview(request('1.0'),device)['changes']==[]
         assert status_digest()==before
         assert run('/usr/bin/dpkg-query','-W','-f=${Version}',name)=='1.0'
-        print(json.dumps({'native_apt':upgrade['apt_version'],'install_preview':True,'upgrade_preview':True,'remove_preview':True,'noop_preview':True,'unchanged_by_previews':True}))
+        # Exercise the real HTTP transport, capability negotiation and local journal.
+        import threading
+        from protec.server import make_server
+        from protec.agent import cycle,inventory
+        from protec.agent_receipts import ReceiptJournal
+        with tempfile.TemporaryDirectory() as temporary:
+            plane=make_server(Path(temporary)/'plane.db','t'*43,0)
+            thread=threading.Thread(target=plane.serve_forever,daemon=True);thread.start()
+            try:
+                enrolled=plane.store.enroll(plane.store.enrollment()['token'],inventory())
+                state={**enrolled,'server':'http://127.0.0.1:'+str(plane.server_port)}
+                journal=ReceiptJournal(Path(temporary)/'receipts',state['server'],state['id'])
+                cycle(state,journal);cycle(state,journal)
+                job=plane.store.queue(state['id'],package_request=request('2.0'))
+                cycle(state,journal)
+                record=plane.store.snapshot()['jobs'][0]
+                assert record['id']==job['id'] and record['status']=='completed'
+                assert record['preview']['outcome']=='succeeded',record['result']
+                assert record['preview']['plan']['changes']==upgrade['changes']
+                assert journal.status()['counts']=={'acknowledged':1}
+                assert status_digest()==before
+            finally:
+                plane.shutdown();plane.server_close();thread.join()
+        print(json.dumps({'remote_roundtrip':True,'local_receipt':True,'native_apt' :upgrade['apt_version'],'install_preview':True,'upgrade_preview':True,'remove_preview':True,'noop_preview':True,'unchanged_by_previews':True}))
     finally:
         if installed:run('/usr/bin/dpkg','--purge',name)
         source.unlink(missing_ok=True)

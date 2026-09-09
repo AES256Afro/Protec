@@ -59,3 +59,20 @@ test('a pending group save cannot submit twice and saved drafts clear before rel
  const pending=submit();await submit();assert.equal(calls,1);resolve();await pending;
  assert.equal(f.elements.get('group-name').value,'');assert.match(f.elements.get('notice').textContent,/saved, but reload failed/);
 });
+test('package preview UI requests a plan and leaves mock packages unchanged',async()=>{
+ const f=await fixture();const before=(await f.run("protecDemo.request('dashboard')")).devices[0].inventory.packages;
+ f.run("showPackages('demo-linux-01')");assert.equal(f.elements.get('package-preview-form').hidden,false);
+ f.elements.get('package-name').value='git';f.elements.get('package-version').value='2.50.0';f.elements.get('package-action').value='install';
+ await f.elements.get('package-preview-form').onsubmit({preventDefault(){}});
+ const data=await f.run("protecDemo.request('dashboard')");const job=data.jobs[0];
+ assert.equal(job.kind,'preview_packages');assert.equal(job.preview.plan.changes[0].after,'2.50.0');
+ assert.equal(JSON.stringify(data.devices[0].inventory.packages),JSON.stringify(before));
+ assert.match(f.elements.get('job-list').innerHTML,/Review package preview/);assert.match(f.elements.get('job-list').innerHTML,/No changes applied/);
+ f.run("showPackages('demo-mac-01')");assert.equal(f.elements.get('package-preview-form').hidden,true);
+});
+test('invalid package input, pending action and lost permissions never queue a preview',async()=>{
+ const f=await fixture();f.run("showPackages('demo-linux-01')");f.elements.get('package-action').value='install';f.elements.get('package-version').value='1.0';
+ for(const name of ['--option','./file.deb','package*','package+']){f.elements.get('package-name').value=name;await f.elements.get('package-preview-form').onsubmit({preventDefault(){}});assert.match(f.elements.get('package-preview-error').textContent,/exact package/);}
+ f.elements.get('package-name').value='git';f.run('snapshot.identity.permissions=[]');await f.elements.get('package-preview-form').onsubmit({preventDefault(){}});assert.match(f.elements.get('package-preview-error').textContent,/no longer available/);
+ assert.equal((await f.run("protecDemo.request('dashboard')")).jobs.length,2);
+});

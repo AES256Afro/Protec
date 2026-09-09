@@ -88,6 +88,7 @@ class MigrationTests(unittest.TestCase):
         device=store.enroll(store.enrollment()['token'],inventory());store.queue(device['id'])
         with store.connect() as db:
             db.execute('ALTER TABLE jobs DROP COLUMN not_before');db.execute('ALTER TABLE jobs DROP COLUMN not_after')
+            db.execute('ALTER TABLE jobs DROP COLUMN payload');db.execute('ALTER TABLE jobs DROP COLUMN preview')
             db.execute('DROP TABLE policy_objects')
             db.execute('PRAGMA user_version=5')
             before=[tuple(row) for row in db.execute('SELECT * FROM jobs')]
@@ -95,8 +96,8 @@ class MigrationTests(unittest.TestCase):
             store=Store(self.path)
             with store.connect() as db:
                 rows=list(db.execute('SELECT * FROM jobs'))
-                self.assertEqual([tuple(row)[:-2] for row in rows],before)
-                self.assertEqual(tuple(rows[0])[-2:],(None,None))
+                self.assertEqual([tuple(row)[:-4] for row in rows],before)
+                self.assertEqual(tuple(rows[0])[-4:],(None,None,'{}',None))
                 self.assertEqual(validate_schema(db),SCHEMA_VERSION)
         self.assertEqual(len(store.heartbeat(device['id'],inventory(),1)['jobs']),1)
 
@@ -104,6 +105,7 @@ class MigrationTests(unittest.TestCase):
         store=Store(self.path)
         with store.connect() as db:
             db.execute('ALTER TABLE jobs DROP COLUMN not_before')
+            db.execute('ALTER TABLE jobs DROP COLUMN payload');db.execute('ALTER TABLE jobs DROP COLUMN preview')
             db.execute('DROP TABLE policy_objects')
             db.execute('PRAGMA user_version=5')
         with self.assertRaises(sqlite3.OperationalError):Store(self.path)

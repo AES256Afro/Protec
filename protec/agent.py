@@ -59,16 +59,20 @@ def request(server,path,token,body):
         return json.load(response)
 
 def cycle(state,journal=None,job_trust=None):
-    offer=capabilities.inventory_offer()
+    apt_previews=state.get('_preview_supported') is True and platform.system()=='Linux' and Path('/usr/bin/apt-get').is_file()
+    offer=capabilities.inventory_offer(apt_previews)
     fresh = time.monotonic()-state.get('_package_scan',float('-inf'))>=300
     if fresh:
         state['_packages']=collect_packages()
         state['_package_scan']=time.monotonic()
     current=inventory()
+    if state.get('_preview_supported') is True:current['apt_preview']=1 if apt_previews else 0
     current['packages']=state['_packages']
     response = request(state['server'],'/api/heartbeat',state['credential'],{'inventory':current,'job_protocol':1,'job_capabilities':offer})
     if not isinstance(response,dict) or not isinstance(response.get('jobs'),list) or len(response['jobs'])>10:
         raise ValueError('Invalid job delivery response')
+    state['_preview_supported']=type(response.get('package_previews')) is int and response['package_previews']==1
+    if not state['_preview_supported']:current.pop('apt_preview',None)
     negotiated=protocol(response.get('job_protocol',0))
     jobs=[validate_envelope(job,state.get('id')) for job in response['jobs']]
     if any(job.get('version',0)!=negotiated for job in jobs):
@@ -82,7 +86,7 @@ def cycle(state,journal=None,job_trust=None):
                 result=request(state['server'],'/api/job-receipt?job='+record['job'],state['credential'],None)
                 journal.reconcile(record,result)
         jobs=[job for job in jobs if job.get('version')!=1 or journal.begin(job)]
-    if jobs and not fresh:
+    if any(job['kind']=='refresh_inventory' for job in jobs) and not fresh:
         state['_packages']=collect_packages()
         state['_package_scan']=time.monotonic()
         current['packages']=state['_packages']
@@ -91,9 +95,15 @@ def cycle(state,journal=None,job_trust=None):
         completion={'job':job['id']}
         if job.get('version')==1:
             validate_envelope(job,state.get('id'))
-            completion.update(version=1,attempt=job['attempt'],lease_token=job['lease']['token'],result={'outcome':'succeeded','inventory_sha256':inventory_digest(current)})
+            outcome={'outcome':'succeeded','inventory_sha256':inventory_digest(current)}
+            if job['kind']=='preview_packages':
+                from protec.apt_preview import preview
+                try:outcome={'outcome':'succeeded','plan':preview(job['payload'],state['id'])}
+                except (ValueError,OSError):outcome={'outcome':'unavailable','reason':'preview_unavailable'}
+                validate_envelope(job,state.get('id'))
+            completion.update(version=1,attempt=job['attempt'],lease_token=job['lease']['token'],result=outcome)
         if journal is not None and job.get('version')==1:
-            journal.reported(job,completion['result']['inventory_sha256'])
+            journal.reported(job,completion['result']['inventory_sha256'] if job['kind']=='refresh_inventory' else inventory_digest(completion['result']))
         result=request(state['server'],'/api/complete',state['credential'],completion)
         if journal is not None and job.get('version')==1:
             journal.acknowledge(job,result.get('receipt') if isinstance(result,dict) else None)

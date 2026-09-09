@@ -18,12 +18,20 @@ class ReceiptError(ValueError):
     pass
 
 
+def receipt_digest(receipt):
+    return receipt.get('inventory_sha256') if receipt.get('kind')=='refresh_inventory' else receipt.get('result_sha256')
+
+
 def validate_receipt(receipt,device,job):
-    keys={'version','job','device','kind','attempt','outcome','inventory_sha256','recorded_at'}
-    if (not isinstance(receipt,dict) or set(receipt)!=keys or type(receipt['version']) is not int or receipt['version']!=1 or
-            receipt['job']!=job or receipt['device']!=device or receipt['kind']!='refresh_inventory' or
-            type(receipt['attempt']) is not int or not 1<=receipt['attempt']<=3 or receipt['outcome']!='succeeded' or
-            not isinstance(receipt['inventory_sha256'],str) or not re.fullmatch(r'[0-9a-f]{64}',receipt['inventory_sha256']) or
+    if not isinstance(receipt,dict):raise ReceiptError('Invalid server completion receipt')
+    kind=receipt.get('kind')
+    key='inventory_sha256' if kind=='refresh_inventory' else 'result_sha256'
+    keys={'version','job','device','kind','attempt','outcome',key,'recorded_at'}
+    if (set(receipt)!=keys or type(receipt['version']) is not int or receipt['version']!=1 or
+            receipt['job']!=job or receipt['device']!=device or kind not in ('refresh_inventory','preview_packages') or
+            type(receipt['attempt']) is not int or not 1<=receipt['attempt']<=3 or
+            receipt['outcome'] not in (('succeeded',) if kind=='refresh_inventory' else ('succeeded','unavailable')) or
+            not isinstance(receipt[key],str) or not re.fullmatch(r'[0-9a-f]{64}',receipt[key]) or
             type(receipt['recorded_at']) not in (int,float) or not math.isfinite(receipt['recorded_at']) or receipt['recorded_at']<0):
         raise ReceiptError('Invalid server completion receipt')
     return receipt
@@ -62,8 +70,13 @@ class ReceiptJournal:
                     db.execute('INSERT INTO binding VALUES (?,?)',(server.rstrip('/'),device))
                     db.execute('CREATE TABLE attempts (job TEXT, attempt INTEGER, state TEXT NOT NULL, inventory_sha256 TEXT, receipt TEXT, created REAL NOT NULL, updated REAL NOT NULL, PRIMARY KEY(job,attempt))')
                     db.execute('PRAGMA user_version=1')
-                elif version!=1:
+                elif version not in (1,2):
                     raise ReceiptError('Unsupported receipt database version')
+                if version<2:
+                    db.execute("ALTER TABLE attempts ADD COLUMN kind TEXT NOT NULL DEFAULT 'refresh_inventory'")
+                    db.execute('ALTER TABLE attempts ADD COLUMN result_sha256 TEXT')
+                    db.execute('UPDATE attempts SET result_sha256=inventory_sha256')
+                    db.execute('PRAGMA user_version=2')
                 if [tuple(row) for row in db.execute('SELECT server,device FROM binding')]!=[(server.rstrip('/'),device)]:
                     raise ReceiptError('Receipt journal belongs to a different server or device')
         except OSError as error:
@@ -112,22 +125,22 @@ class ReceiptJournal:
                 db.execute("DELETE FROM attempts WHERE updated<? AND state IN ('acknowledged','server_cancelled','server_failed','superseded')",(now-30*86400,))
                 if db.execute('SELECT count(*) FROM attempts').fetchone()[0]>=MAX_RECORDS:
                     raise ReceiptError('Receipt journal is full; inspect or archive it before accepting more jobs')
-            db.execute("INSERT INTO attempts VALUES (?,?,'started',NULL,NULL,?,?)",(job['id'],job['attempt'],now,now))
+            db.execute("INSERT INTO attempts(job,attempt,state,inventory_sha256,receipt,created,updated,kind) VALUES (?,?,'started',NULL,NULL,?,?,?)",(job['id'],job['attempt'],now,now,job['kind']))
         return True
 
     def reported(self,job,digest):
         if not isinstance(digest,str) or not re.fullmatch(r'[0-9a-f]{64}',digest):
             raise ReceiptError('Invalid local inventory digest')
         with self.connect() as db:
-            if not db.execute("UPDATE attempts SET state='completion_pending',inventory_sha256=?,updated=? WHERE job=? AND attempt=? AND state='started'",(digest,self.clock(),job['id'],job['attempt'])).rowcount:
+            if not db.execute("UPDATE attempts SET state='completion_pending',inventory_sha256=?,result_sha256=?,updated=? WHERE job=? AND attempt=? AND state='started'",(digest if job['kind']=='refresh_inventory' else None,digest,self.clock(),job['id'],job['attempt'])).rowcount:
                 raise ReceiptError('Local attempt was not started')
 
     def acknowledge(self,job,receipt):
         validate_receipt(receipt,self.device,job['id'])
         if receipt['attempt']!=job['attempt']:raise ReceiptError('Receipt belongs to a different attempt')
         with self.connect() as db:
-            row=db.execute('SELECT inventory_sha256,state FROM attempts WHERE job=? AND attempt=?',(job['id'],job['attempt'])).fetchone()
-            if row is None or row['state'] not in ('completion_pending','unknown','acknowledged') or row['inventory_sha256']!=receipt['inventory_sha256']:
+            row=db.execute('SELECT result_sha256,kind,state FROM attempts WHERE job=? AND attempt=?',(job['id'],job['attempt'])).fetchone()
+            if row is None or row['state'] not in ('completion_pending','unknown','acknowledged') or row['kind']!=receipt['kind'] or row['result_sha256']!=receipt_digest(receipt):
                 raise ReceiptError('Receipt does not match locally reported inventory')
             db.execute("UPDATE attempts SET state='acknowledged',receipt=?,updated=? WHERE job=? AND attempt=?",(json.dumps(receipt,sort_keys=True),self.clock(),job['id'],job['attempt']))
 
@@ -155,5 +168,5 @@ class ReceiptJournal:
     def status(self):
         with self.connect() as db:
             counts={row['state']:row['count'] for row in db.execute('SELECT state,count(*) AS count FROM attempts GROUP BY state')}
-            recent=[dict(row) for row in db.execute('SELECT job,attempt,state,inventory_sha256,created,updated FROM attempts ORDER BY updated DESC LIMIT 50')]
+            recent=[dict(row) for row in db.execute('SELECT job,attempt,state,kind,inventory_sha256,result_sha256,created,updated FROM attempts ORDER BY updated DESC LIMIT 50')]
         return {'counts':counts,'recent':recent}
