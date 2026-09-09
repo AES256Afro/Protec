@@ -27,9 +27,9 @@ Each milestone owns one capability. Shared execution, identity, audit, schedulin
 | M14 | Agent lifecycle and native platforms: signed install/update, systemd/launchd/Windows service, Keychain/Windows protected storage, native MDM integrations | M3, M4 | Install, reboot persistence, upgrade, credential recovery and uninstall on each actual OS; Apple MDM separately verified. |
 | M15 | Fleet operations and resilience: API/CLI, notifications/webhooks, dashboards, reports, audit export, scaling and recovery | M2 through M14 incrementally | Backup restore, migration rollback, rate limiting, load tests, operator review and staged production deployment. |
 
-## Current work window and next priorities
+## Active continuation and next priorities
 
-The latest September 9 request authorizes five hours from **2026-09-09 11:24:56 UTC through 16:24:56 UTC (11:24:56 a.m. America/Chicago)**. This replaces the earlier four-hour deadline and unlimited continuation instruction for this scheduled run. The existing continuation checks the deadline, closes in-flight verification safely and pauses when the window ends. The overall platform roadmap remains incomplete; elapsed time is not an acceptance gate.
+The latest September 9 instruction, **"Continue working until completed,"** removes the prior five-hour cutoff and supersedes earlier time limits. Continue in bounded, verified slices until the requested roadmap acceptance criteria are satisfied, the user asks to stop, or concrete external dependencies prevent all meaningful independent progress. Keep source, hosted CI, native/runtime verification and deployed state distinct. Mocks or elapsed time do not establish completion. The existing continuation remains active without a fixed deadline.
 
 Following the September 9 plan review, prioritize a usable Linux management pilot:
 
@@ -39,7 +39,7 @@ Following the September 9 plan review, prioritize a usable Linux management pilo
 4. **Deliver one complete APT package workflow.** Preview exact changes, bind approval to the device and immutable plan, execute on a disposable Ubuntu/Debian target and verify installed state. Prove interruption recovery without blindly retrying side effects. Build approvals with this workflow, rather than a standalone approval queue for read-only inventory. Different service tokens alone do not prove different human approvers.
 5. **Extend through configurations and bounded logs to network control.** Reuse the execution foundations. Test connectivity recovery before enabling network, VPN/WireGuard or SSH changes on a live target.
 
-Finish and verify bounded slices before advancing. Release consolidation and the Linux installation checkpoint are the first targets for this window; later items are ordered backlog, not a promise that the entire pilot or platform will fit into five hours. Record actual results and remaining native/deployment gates in WORK_SESSION.md.
+Finish and verify bounded slices before advancing. Release consolidation and the Linux installation checkpoint are the immediate targets; later items remain ordered backlog. Record actual results and remaining native/deployment gates in WORK_SESSION.md.
 
 ## Cross-cutting operating rules
 
