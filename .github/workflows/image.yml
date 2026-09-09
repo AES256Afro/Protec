@@ -2,7 +2,6 @@ name: Container image
 on:
   push:
     tags: ['v*']
-  workflow_dispatch:
 permissions:
   contents: read
   packages: write
@@ -11,6 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Verify release tag
+        run: |
+          test "$GITHUB_REF_TYPE" = tag
+          test "$GITHUB_REF_NAME" = "v$(cat VERSION)"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.14'

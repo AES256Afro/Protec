@@ -21,3 +21,8 @@ jobs:
       - run: node --check static/app.js
       - run: node --test tests/*.cjs
       - run: python scripts/build_website.py
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/check_compose.sh
