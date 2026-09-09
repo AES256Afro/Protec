@@ -13,7 +13,7 @@ from urllib.parse import urlsplit, parse_qs
 from protec.migrations import migrate
 from protec.history import page, health
 from protec.packages import validate_report
-from protec import identity, jobs as job_contracts
+from protec import identity, capabilities, jobs as job_contracts
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -70,15 +70,16 @@ class Store:
         if not row:
             raise PermissionError('Device credential rejected')
         return row['id']
-    def heartbeat(self, device, inventory, job_protocol=0):
+    def heartbeat(self, device, inventory, job_protocol=0, job_capabilities=capabilities.UNREPORTED):
         job_contracts.protocol(job_protocol)
+        admitted=capabilities.admitted(job_capabilities,job_protocol)
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             if not db.execute('SELECT id FROM devices WHERE id=? AND revoked=0',(device,)).fetchone():
                 raise PermissionError('Device revoked')
             db.execute('UPDATE devices SET inventory=?,seen=? WHERE id=?', (json.dumps(inventory),time.time(),device))
-            delivered=job_contracts.deliver(db,self,device,job_protocol)
-        return {'jobs':delivered,'job_protocol':job_protocol,'receipt_lookup':1}
+            delivered=job_contracts.deliver(db,self,device,job_protocol,admitted)
+        return {'jobs':delivered,'job_protocol':job_protocol,'receipt_lookup':1,'capability_admission':1}
     def queue(self, device, actor='administrator'):
         job = secrets.token_hex(12)
         with self.connect() as db:
@@ -217,7 +218,7 @@ class Handler(BaseHTTPRequestHandler):
             if path=='/api/enroll':
                 result = store.enroll(self.bearer(),inventory_input(body))
             elif path=='/api/heartbeat':
-                result = store.heartbeat(store.identify(self.bearer()),inventory_input(body),body.get('job_protocol',0))
+                result = store.heartbeat(store.identify(self.bearer()),inventory_input(body),body.get('job_protocol',0),body.get('job_capabilities',capabilities.UNREPORTED))
             elif path=='/api/complete':
                 result = store.complete(store.identify(self.bearer()),str(body.get('job','')),body)
             else:
