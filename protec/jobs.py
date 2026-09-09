@@ -91,7 +91,7 @@ def complete(store,device,job,body):
 
 def validate_envelope(job,device,now=None):
     """Agent allowlist: reject new versions, wrong targets, payloads and expired leases."""
-    if not isinstance(job,dict) or job.get('kind') not in ('refresh_inventory','preview_packages') or not isinstance(job.get('id'),str) or not re.fullmatch(r'[0-9a-f]{24}',job['id']):
+    if not isinstance(job,dict) or job.get('kind') not in ('refresh_inventory','preview_packages','apply_packages') or not isinstance(job.get('id'),str) or not re.fullmatch(r'[0-9a-f]{24}',job['id']):
         raise ValueError('Invalid or unsupported inventory job')
     version=protocol(job.get('version',0))
     if version==0:
@@ -110,9 +110,14 @@ def validate_envelope(job,device,now=None):
         raise ValueError('Invalid or expired inventory job lease')
     if job['kind']=='refresh_inventory':
         if job['payload']!={}:raise ValueError('Invalid inventory payload')
-    else:
+    elif job['kind']=='preview_packages':
         from protec.apt_preview import validate_request
         if validate_request(job['payload'])!=job['payload']:raise ValueError('Invalid package preview payload')
+    else:
+        from protec.package_changes import validate_payload
+        payload=validate_payload(job['payload'],now=now)
+        if job['attempt']!=1 or payload['plan']['device']!=device or not payload['approval']['approved_at']<=job['created']<payload['approval']['expires'] or lease['expires']>payload['approval']['expires']:
+            raise ValueError('Invalid package change attempt or approval target')
     return job
 
 
