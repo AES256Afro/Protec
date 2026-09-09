@@ -19,6 +19,8 @@ jobs:
           python-version: '3.14'
       - run: python -m pip install -r requirements-signing.txt
       - run: python -W error::ResourceWarning -m unittest discover -s tests -v
+      - name: Verify independent installation before publication
+        run: sh scripts/check_compose.sh
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
