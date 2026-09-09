@@ -80,7 +80,7 @@ class PackageJobTests(unittest.TestCase):
         journal=ReceiptJournal(directory,'http://localhost',self.device)
         with journal.connect() as db:
             db.execute('ALTER TABLE attempts DROP COLUMN kind');db.execute('ALTER TABLE attempts DROP COLUMN result_sha256')
-            db.execute("INSERT INTO attempts VALUES ('legacy',1,'completion_pending',?,NULL,1,1)",('c'*64,));db.execute('PRAGMA user_version=1')
+            db.execute("INSERT INTO attempts VALUES ('legacy',1,'completion_pending',?,NULL,1,1)",('c'*64,));db.execute('DROP TABLE mutation_results');db.execute('PRAGMA user_version=1')
         upgraded=ReceiptJournal(directory,'http://localhost',self.device)
         row=upgraded.status()['recent'][0]
         self.assertEqual(row['inventory_sha256'],row['result_sha256']);self.assertEqual(row['kind'],'refresh_inventory')

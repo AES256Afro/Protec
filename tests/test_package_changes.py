@@ -98,3 +98,77 @@ class ChangeCoreTests(unittest.TestCase):
         self.journal=ReceiptJournal(Path(self.tmp.name)/'other-journal','https://other.invalid',self.device)
         with self.assertRaises(ValueError):self.execute()
         self.assertEqual(self.journal.status()['counts'],{})
+
+    def next_job(self):
+        self.job={**self.job,'id':'d'*24};self.proof=self.signer.sign(self.job)
+
+    def acknowledge(self,result):
+        self.journal.acknowledge(self.job,{'version':1,'job':self.job['id'],'device':self.device,'kind':'apply_packages','attempt':1,'outcome':result['outcome'],'result_sha256':inventory_digest(result),'recorded_at':time.time()})
+
+    def test_full_result_survives_reopen_without_lease_secrets(self):
+        result=self.execute()
+        reopened=ReceiptJournal(self.journal.directory,self.origin,self.device)
+        self.assertEqual(reopened.mutation_result(self.job['id']),result)
+        self.assertNotIn(self.job['lease']['token'].encode(),reopened.path.read_bytes())
+        self.assertIsNone(reopened.mutation_result('f'*24))
+
+    def test_new_change_waits_for_acknowledgement(self):
+        result=self.execute();old=self.job
+        self.next_job()
+        with self.assertRaises(ReceiptError):self.execute()
+        new=self.job;self.job=old;self.acknowledge(result);self.job=new
+        self.assertEqual(self.execute()['outcome'],'succeeded')
+        self.assertEqual(self.commits,2)
+
+    def test_acknowledged_uncertain_result_still_blocks_new_changes(self):
+        with patch.object(self.cache,'commit',side_effect=SystemError('failure')):result=self.execute()
+        self.acknowledge(result);self.next_job()
+        with self.assertRaises(ReceiptError):self.execute()
+
+    def test_server_failure_does_not_erase_unresolved_mutation(self):
+        with patch.object(self.cache,'commit',side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):self.execute()
+        self.journal.reconcile({'job':self.job['id'],'attempt':1},{'id':self.job['id'],'attempt':1,'status':'failed','receipt':None})
+        self.next_job()
+        with self.assertRaises(ReceiptError):self.execute()
+
+    def test_result_write_is_atomic_and_rejects_unexpected_fields(self):
+        self.journal.begin(self.job)
+        result={'outcome':'refused','plan_sha256':self.job['payload']['plan']['plan_sha256'],'reason':'preflight_refused'}
+        with self.assertRaises(ReceiptError):self.journal.mutation_reported(self.job,{**result,'lease':'secret'})
+        with self.journal.connect() as db:
+            db.execute("CREATE TRIGGER fail_result BEFORE INSERT ON mutation_results BEGIN SELECT RAISE(ABORT,'injected failure'); END")
+        with self.assertRaises(ReceiptError):self.journal.mutation_reported(self.job,result)
+        self.assertEqual(self.journal.status()['counts'],{'started':1})
+        self.assertIsNone(self.journal.mutation_result(self.job['id']))
+
+    def test_schema_two_migration_retains_unresolved_mutation_gate(self):
+        self.journal.begin(self.job)
+        with self.journal.connect() as db:
+            db.execute('DROP TABLE mutation_results');db.execute('PRAGMA user_version=2')
+        self.journal=ReceiptJournal(self.journal.directory,self.origin,self.device)
+        self.assertEqual(self.journal.status()['counts'],{'started':1})
+        self.next_job()
+        with self.assertRaises(ReceiptError):self.execute()
+
+    def test_stored_result_corruption_is_detected(self):
+        self.execute()
+        with self.journal.connect() as db:db.execute("UPDATE attempts SET result_sha256=?",('f'*64,))
+        with self.assertRaises(ReceiptError):self.journal.mutation_result(self.job['id'])
+
+    def test_hard_exit_after_result_write_recovers_complete_result(self):
+        import json
+        import subprocess
+        result={'outcome':'refused','plan_sha256':self.job['payload']['plan']['plan_sha256'],'reason':'preflight_refused'}
+        code="""import json,os,sys
+from protec.agent_receipts import ReceiptJournal
+p=json.load(sys.stdin)
+journal=ReceiptJournal(p['directory'],p['origin'],p['device'])
+journal.begin(p['job']);journal.mutation_reported(p['job'],p['result'])
+os._exit(73)
+"""
+        process=subprocess.run([sys.executable,'-c',code],input=json.dumps({'directory':str(self.journal.directory),'origin':self.origin,'device':self.device,'job':self.job,'result':result}),capture_output=True,text=True,timeout=10)
+        self.assertEqual(process.returncode,73,process.stderr)
+        reopened=ReceiptJournal(self.journal.directory,self.origin,self.device)
+        self.assertEqual(reopened.mutation_result(self.job['id']),result)
+        self.assertEqual(reopened.status()['counts'],{'completion_pending':1})

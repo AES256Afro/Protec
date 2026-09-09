@@ -1,7 +1,7 @@
 """Cross-schema activation failure acceptance, only in the marked disposable guest.
 
 Starts from its retained schema-1 journal and absent installed service. Preserves
-that fixture baseline, tests refusal to roll older code onto schema 2, verifies
+that fixture baseline, tests refusal to roll older code onto schema 3, verifies
 recovery with compatible code, uninstalls and restores only the lab baseline.
 """
 import json
@@ -53,11 +53,11 @@ def main():
             assert run('systemctl','is-active','--quiet','protec-agent.service',check=False).returncode==0
             failed=run('sh',str(installer),'install',str(broken),check=False)
             assert failed.returncode!=0 and 'receipt schema changed' in failed.stderr,failed.stderr
-            assert schema(STATE)==2
+            assert schema(STATE)==3
             assert '0.6.98-' in os.readlink(BASE/'current')
             assert run('systemctl','is-active','--quiet','protec-agent.service',check=False).returncode!=0
             run('sh',str(installer),'install',str(ROOT))
-            assert schema(STATE)==2
+            assert schema(STATE)==3
             assert run('systemctl','is-active','--quiet','protec-agent.service',check=False).returncode==0
             run('sh',str(installer),'uninstall')
             print(json.dumps({'schema_change_detected':True,'unsafe_code_rollback_refused':True,'receipts_retained':True,'compatible_recovery':True,'uninstalled':True}))

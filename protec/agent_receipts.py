@@ -71,13 +71,16 @@ class ReceiptJournal:
                     db.execute('INSERT INTO binding VALUES (?,?)',(server.rstrip('/'),device))
                     db.execute('CREATE TABLE attempts (job TEXT, attempt INTEGER, state TEXT NOT NULL, inventory_sha256 TEXT, receipt TEXT, created REAL NOT NULL, updated REAL NOT NULL, PRIMARY KEY(job,attempt))')
                     db.execute('PRAGMA user_version=1')
-                elif version not in (1,2):
+                elif version not in (1,2,3):
                     raise ReceiptError('Unsupported receipt database version')
                 if version<2:
                     db.execute("ALTER TABLE attempts ADD COLUMN kind TEXT NOT NULL DEFAULT 'refresh_inventory'")
                     db.execute('ALTER TABLE attempts ADD COLUMN result_sha256 TEXT')
                     db.execute('UPDATE attempts SET result_sha256=inventory_sha256')
                     db.execute('PRAGMA user_version=2')
+                if version<3:
+                    db.execute('CREATE TABLE mutation_results (job TEXT NOT NULL, attempt INTEGER NOT NULL, result TEXT NOT NULL, PRIMARY KEY(job,attempt))')
+                    db.execute('PRAGMA user_version=3')
                 if [tuple(row) for row in db.execute('SELECT server,device FROM binding')]!=[(server.rstrip('/'),device)]:
                     raise ReceiptError('Receipt journal belongs to a different server or device')
         except OSError as error:
@@ -120,21 +123,54 @@ class ReceiptJournal:
             db.execute('BEGIN IMMEDIATE')
             if db.execute("SELECT 1 FROM attempts WHERE job=? AND (attempt>=? OR state='acknowledged')",(job['id'],job['attempt'])).fetchone():
                 return False
+            if job['kind']=='apply_packages':
+                from protec.package_changes import validate_result
+                from protec.jobs import inventory_digest
+                for row in db.execute("SELECT a.state,a.result_sha256,r.result FROM attempts a LEFT JOIN mutation_results r ON a.job=r.job AND a.attempt=r.attempt WHERE a.kind='apply_packages'"):
+                    if row['state']!='acknowledged' or row['result'] is None:
+                        raise ReceiptError('An earlier package change requires reconciliation before another change')
+                    result=validate_result(json.loads(row['result']))
+                    if inventory_digest(result)!=row['result_sha256'] or result['outcome']=='uncertain':
+                        raise ReceiptError('An earlier package result requires inspection before another change')
             # Keep unresolved evidence; prune only old terminal records at the capacity boundary.
             count=db.execute('SELECT count(*) FROM attempts').fetchone()[0]
             if count>=MAX_RECORDS:
-                db.execute("DELETE FROM attempts WHERE updated<? AND state IN ('acknowledged','server_cancelled','server_failed','superseded')",(now-30*86400,))
+                db.execute("DELETE FROM attempts WHERE kind!='apply_packages' AND updated<? AND state IN ('acknowledged','server_cancelled','server_failed','superseded')",(now-30*86400,))
                 if db.execute('SELECT count(*) FROM attempts').fetchone()[0]>=MAX_RECORDS:
                     raise ReceiptError('Receipt journal is full; inspect or archive it before accepting more jobs')
             db.execute("INSERT INTO attempts(job,attempt,state,inventory_sha256,receipt,created,updated,kind) VALUES (?,?,'started',NULL,NULL,?,?,?)",(job['id'],job['attempt'],now,now,job['kind']))
         return True
 
     def reported(self,job,digest):
+        if job['kind']=='apply_packages':
+            raise ReceiptError('Package changes require a durable full result')
         if not isinstance(digest,str) or not re.fullmatch(r'[0-9a-f]{64}',digest):
             raise ReceiptError('Invalid local result digest')
         with self.connect() as db:
             if not db.execute("UPDATE attempts SET state='completion_pending',inventory_sha256=?,result_sha256=?,updated=? WHERE job=? AND attempt=? AND state='started'",(digest if job['kind']=='refresh_inventory' else None,digest,self.clock(),job['id'],job['attempt'])).rowcount:
                 raise ReceiptError('Local attempt was not started')
+
+    def mutation_reported(self,job,result):
+        from protec.package_changes import validate_result
+        from protec.jobs import inventory_digest
+        result=validate_result(result)
+        if job['kind']!='apply_packages' or result['plan_sha256']!=job['payload']['plan']['plan_sha256']:
+            raise ReceiptError('Package result does not match the attempted plan')
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if not db.execute("UPDATE attempts SET state='completion_pending',result_sha256=?,updated=? WHERE job=? AND attempt=? AND kind='apply_packages' AND state='started'",(inventory_digest(result),self.clock(),job['id'],job['attempt'])).rowcount:
+                raise ReceiptError('Local package attempt was not started')
+            db.execute('INSERT INTO mutation_results VALUES (?,?,?)',(job['id'],job['attempt'],json.dumps(result,sort_keys=True)))
+
+    def mutation_result(self,job,attempt=1):
+        from protec.package_changes import validate_result
+        from protec.jobs import inventory_digest
+        with self.connect() as db:
+            row=db.execute('SELECT r.result,a.result_sha256 FROM mutation_results r JOIN attempts a ON a.job=r.job AND a.attempt=r.attempt WHERE r.job=? AND r.attempt=?',(job,attempt)).fetchone()
+        if row is None:return None
+        result=validate_result(json.loads(row['result']))
+        if inventory_digest(result)!=row['result_sha256']:raise ReceiptError('Stored package result digest does not match')
+        return result
 
     def acknowledge(self,job,receipt):
         validate_receipt(receipt,self.device,job['id'])
@@ -143,6 +179,10 @@ class ReceiptJournal:
             row=db.execute('SELECT result_sha256,kind,state FROM attempts WHERE job=? AND attempt=?',(job['id'],job['attempt'])).fetchone()
             if row is None or row['state'] not in ('completion_pending','unknown','acknowledged') or row['kind']!=receipt['kind'] or row['result_sha256']!=receipt_digest(receipt):
                 raise ReceiptError('Receipt does not match locally reported inventory')
+            if row['kind']=='apply_packages':
+                saved=db.execute('SELECT result FROM mutation_results WHERE job=? AND attempt=?',(job['id'],job['attempt'])).fetchone()
+                if saved is None or json.loads(saved['result'])['outcome']!=receipt['outcome']:
+                    raise ReceiptError('Receipt does not match the local package outcome')
             db.execute("UPDATE attempts SET state='acknowledged',receipt=?,updated=? WHERE job=? AND attempt=?",(json.dumps(receipt,sort_keys=True),self.clock(),job['id'],job['attempt']))
 
     def pending(self,limit=10):
@@ -164,7 +204,7 @@ class ReceiptJournal:
                 return self.acknowledge({'id':record['job'],'attempt':record['attempt']},receipt)
         outcome='server_cancelled' if status=='cancelled' else 'server_failed' if status=='failed' else 'superseded' if attempt>record['attempt'] else 'unknown'
         with self.connect() as db:
-            db.execute("UPDATE attempts SET state=?,updated=? WHERE job=? AND attempt=? AND state IN ('started','completion_pending','unknown')",(outcome,self.clock(),record['job'],record['attempt']))
+            db.execute("UPDATE attempts SET state=CASE WHEN kind='apply_packages' THEN 'unknown' ELSE ? END,updated=? WHERE job=? AND attempt=? AND state IN ('started','completion_pending','unknown')",(outcome,self.clock(),record['job'],record['attempt']))
 
     def status(self):
         with self.connect() as db:
