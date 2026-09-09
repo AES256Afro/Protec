@@ -94,7 +94,8 @@ def collect():
     result['collected_at']=time.time()
     return result
 
-def validate_report(report):
+def validate_report(report, *, now=None):
+    now=time.time() if now is None else now
     if not isinstance(report,dict):
         raise ValueError('Invalid package report')
     status=report.get('status')
@@ -107,7 +108,7 @@ def validate_report(report):
         raise ValueError('Invalid package status or manager')
     if not isinstance(items,list) or len(items)>MAX_ITEMS or type(total) is not int or not len(items)<=total<=1000000 or type(truncated) is not bool:
         raise ValueError('Invalid package inventory size')
-    if type(collected) not in (int,float) or not math.isfinite(collected) or not 0<collected<=time.time()+300:
+    if type(collected) not in (int,float) or not math.isfinite(collected) or not 0<collected<=now+300:
         raise ValueError('Invalid package collection time')
     if truncated != (total>len(items)) or (status!='complete' and (items or total)):
         raise ValueError('Inconsistent package inventory status')
