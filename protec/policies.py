@@ -6,6 +6,12 @@ from protec.jobs import inventory_digest
 from protec.packages import validate_report
 
 
+def finite_time(value):
+    if type(value) not in (int,float):return False
+    try:return math.isfinite(value)
+    except OverflowError:return False
+
+
 def validate_rule(rule):
     if not isinstance(rule,dict) or set(rule)!={'kind','manager','package','max_age_seconds'}:
         raise ValueError('Use a package_present rule with manager, package and max_age_seconds')
@@ -26,7 +32,7 @@ only evidence supplied for one device and never treats group membership as proof
 """
     rule=validate_rule(rule)
     now=time.time() if now is None else now
-    if type(now) not in (int,float) or not math.isfinite(now):
+    if not finite_time(now):
         raise ValueError('Evaluation time must be finite')
     result={'status':'unknown','reason':None,'evaluated_at':now,'collected_at':None,
             'inventory_sha256':None,'observed_versions':[], 'rule':rule}
@@ -42,7 +48,7 @@ only evidence supplied for one device and never treats group membership as proof
     except (ValueError,TypeError,OverflowError):
         return finish('unknown','Inventory cannot be evaluated')
     seen=device.get('seen')
-    if type(seen) not in (int,float) or not math.isfinite(seen) or seen<=0 or seen>now+300:
+    if not finite_time(seen) or seen<=0 or seen>now+300:
         return finish('unknown','Device check-in time is missing or invalid')
     if now-seen>rule['max_age_seconds']:
         return finish('unknown','Device check-in is older than the policy evidence limit')
@@ -50,7 +56,7 @@ only evidence supplied for one device and never treats group membership as proof
     if not isinstance(report,dict):
         return finish('unknown','No package inventory is available')
     collected=report.get('collected_at')
-    if type(collected) not in (int,float) or not math.isfinite(collected) or collected<=0 or collected>now+300:
+    if not finite_time(collected) or collected<=0 or collected>now+300:
         return finish('unknown','Package collection time is missing or invalid')
     result['collected_at']=collected
     try:
