@@ -27,9 +27,9 @@ Each milestone owns one capability. Shared execution, identity, audit, schedulin
 | M14 | Agent lifecycle and native platforms: signed install/update, systemd/launchd/Windows service, Keychain/Windows protected storage, native MDM integrations | M3, M4 | Linux inventory systemd installation is implemented after 0.6, with Ubuntu guest install, restart, failed-activation rollback, upgrade, actual reboot and uninstall/reinstall evidence in WORK_SESSION.md. Signed artifact delivery, pinned-trust service provisioning, other distributions and native macOS/Windows services remain. Verify each actual OS; Apple MDM is separate. |
 | M15 | Fleet operations and resilience: API/CLI, notifications/webhooks, dashboards, reports, audit export, scaling and recovery | M2 through M14 incrementally | Backup restore, migration rollback, rate limiting, load tests, operator review and staged production deployment. |
 
-## Current work window and next priorities
+## Active milestone continuation
 
-The latest September 9 request authorizes five hours from **2026-09-09 12:22:49 UTC through 17:22:49 UTC (12:22:49 p.m. America/Chicago)**. This supersedes the earlier unlimited continuation and previous deadlines for this scheduled run. Work in bounded verified slices, then safely finish in-flight verification, report actual results and pause at the deadline. Elapsed time does not establish roadmap completion. Keep source, CI, native verification and deployed state distinct.
+The latest instruction, **"Lets do it. Dont stop work until the bulk of milestones are completed,"** supersedes prior deadlines. Continue bounded implementation and verification slices toward substantial usable platform milestones. Keep completed and remaining acceptance criteria explicit; schemas, mocks and source publication alone do not establish completion. The replacement continuation `protec-platform-milestones` is active without a fixed cutoff. Pause only on a user stop, verified substantial completion with a completed/remaining assessment, or dependencies that prevent all meaningful independent progress.
 
 Following the September 9 plan review, prioritize a usable Linux management pilot:
 
