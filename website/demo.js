@@ -32,7 +32,7 @@
     advanceWindows();
     let result;
     if(body===undefined) {
-      if(route==='dashboard') result={devices,jobs,audit,time:now(),pending:jobs.filter(job=>['queued','running'].includes(job.status)).length,fleet:{records:devices.length,active:devices.filter(d=>!d.revoked).length,online:devices.filter(d=>!d.revoked && now()-d.seen<90).length},identity:{id:'demo-administrator',name:'Demo administrator',role:'administrator',device_ids:null,permissions}};
+      if(route==='dashboard') result={devices,jobs,audit,job_windows:1,time:now(),pending:jobs.filter(job=>['queued','running'].includes(job.status)).length,fleet:{records:devices.length,active:devices.filter(d=>!d.revoked).length,online:devices.filter(d=>!d.revoked && now()-d.seen<90).length},identity:{id:'demo-administrator',name:'Demo administrator',role:'administrator',device_ids:null,permissions}};
       else if(route==='enrollments') result={enrollments:status(enrollments)};
       else if(route==='credentials') result={credentials:status(credentials),next_cursor:null};
       else if(route==='health') result={status:'simulated',database:'mock data in this tab',schema_version:6,uptime_seconds:0,counts:{devices:devices.length,jobs:jobs.length,enrollments:enrollments.length,audit:audit.length}};

@@ -6,3 +6,5 @@
 .access-form{padding:0 24px 24px;display:grid;grid-template-columns:1fr 1.5fr 130px auto;gap:14px;align-items:end}.access-form label{margin:0}.access-form input,.access-form select{display:block;width:100%;margin-top:8px}#identity-label{font-size:11px;color:#567561}#access-dialog textarea{width:100%;font-family:monospace}@media(max-width:1100px){.access-form{grid-template-columns:1fr 1fr}}@media(max-width:600px){.access-form{grid-template-columns:1fr}#identity-label{display:none}}
 
 .receipt-digest{overflow-wrap:anywhere}
+
+.schedule-fields{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px}.schedule-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}#schedule-preview{margin-top:14px;color:#365e49}#schedule-error{color:#8a402a}#schedule-dialog{max-height:90vh;overflow:auto}@media(max-width:600px){.schedule-fields{grid-template-columns:1fr}}
