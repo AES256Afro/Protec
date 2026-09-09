@@ -14,6 +14,7 @@ from urllib.request import Request, urlopen
 from protec.database import copy_database
 from protec.jobs import inventory_digest
 from protec.server import Store
+from protec.version import VERSION
 
 DATA = Path('/data')
 EVIDENCE = DATA/'compose-smoke.json'
@@ -46,7 +47,8 @@ def seed():
         raise RuntimeError('Smoke checks require a fresh disposable volume')
     import os
     assert os.getuid()==10001
-    assert request('/api/health',token)['schema_version']==6
+    health=request('/api/health',token)
+    assert health['schema_version']==6 and health['version']==VERSION
     assert request('/healthz')['status']=='ok'
     request('/api/dashboard',expected=401)
     enrollment=request('/api/enrollments',token,{})

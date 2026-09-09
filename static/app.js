@@ -158,7 +158,7 @@ $('history-reload').onclick=()=>loadHistory(true).catch(error=>notify(error.mess
 $('history-more').onclick=()=>loadHistory(false).catch(error=>notify(error.message));
 async function loadHealth() {
   const result=await api('health');
-  $('health-output').textContent=`Status: ${result.status}. Database: ${result.database}. Schema: ${result.schema_version}. Uptime: ${result.uptime_seconds} seconds. Records: ${result.counts.devices} devices, ${result.counts.jobs} jobs, ${result.counts.enrollments} enrollment tokens, ${result.counts.audit} audit events.`;
+  $('health-output').textContent=`Version: ${result.version || 'not reported'}. Status: ${result.status}. Database: ${result.database}. Schema: ${result.schema_version}. Uptime: ${result.uptime_seconds} seconds. Records: ${result.counts.devices} devices, ${result.counts.jobs} jobs, ${result.counts.enrollments} enrollment tokens, ${result.counts.audit} audit events.`;
 }
 $('health-refresh').onclick=()=>loadHealth().catch(error=>notify(error.message));
 

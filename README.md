@@ -2,13 +2,13 @@
 
 A Linux-first endpoint management project, with Windows and macOS planned next. The goal is a dashboard for enrollment, security posture, logs, configurations, patches, and audited remote access.
 
-**The 0.5 release is a self-hosted inventory pilot.** It supports independent Docker Compose deployment, an optional BoxPilot catalog install, enrollment, package inventory, and role-based credentials with optional device scopes. It does not yet enforce security policies, collect system logs, install patches, deploy configurations, or open remote sessions.
+**The 0.6 release is a self-hosted inventory pilot.** It supports independent Docker Compose deployment, an optional BoxPilot catalog install, enrollment, package inventory, and role-based credentials with optional device scopes. It does not yet enforce security policies, collect system logs, install patches, deploy configurations, or open remote sessions.
 
 Website: [foragefournuts.com](https://foragefournuts.com) · [Interactive mock demo](https://foragefournuts.com/demo/) · [Independent and BoxPilot deployment](docs/DEPLOYMENT.md)
 
 ## Run locally on your MacBook or Linux
 
-Requires Python 3.11 or newer. The unsigned local inventory pilot needs no third-party packages. Optional job signing in unreleased source requires `requirements-signing.txt`; see [signed job setup](docs/JOB_SIGNATURES.md).
+Requires Python 3.11 or newer. The unsigned local inventory pilot needs no third-party packages. Optional job signing requires `requirements-signing.txt`; see [signed job setup](docs/JOB_SIGNATURES.md).
 
 ```sh
 cd Protec
@@ -46,7 +46,9 @@ The development server binds only to loopback. For a persistent server, use the 
 - Single-use, 15-minute enrollment tokens, consumed atomically. The Enrollments view lists token metadata and lets an administrator revoke unused tokens; secret values are never returned in that list.
 - Unique device credentials; the server stores SHA-256 digests rather than bearer secrets.
 - Separate administrator and device authentication.
-- Inventory refresh queue with a two-minute lease and idempotent redelivery.
+- Versioned inventory refresh delivery with bounded retries, attempt-specific leases, cancellation and completion receipts.
+- Protected local agent receipts for restart reconciliation, explicit capability admission, and optional Ed25519 signatures with operator-pinned trust.
+- One-shot maintenance windows and a dashboard scheduling dialog.
 - Job ownership checks, device revocation, and cancellation of pending work.
 - Audit events for enrollment-token creation, enrollment, refresh, completion, and revocation.
 - Dashboard inventory search, connection counts, action status, and audit history.

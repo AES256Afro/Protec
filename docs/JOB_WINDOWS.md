@@ -1,6 +1,6 @@
-# Unreleased: one-shot inventory maintenance windows
+# One-shot inventory maintenance windows (0.6)
 
-Source after the 0.5.0 tag adds optional maintenance windows to inventory refresh requests. The dashboard and API can create a scheduled refresh, and Activity and job history show its window in the browser's local time. The public mock source includes scheduled examples and a simulated window lifecycle. These changes are not deployed or included in the published 0.5.0 image.
+Version 0.6 adds optional maintenance windows to inventory refresh requests. The dashboard and API can create a scheduled refresh, and Activity and job history show its window in the browser's local time. The public mock source includes scheduled examples and a simulated window lifecycle. These changes are absent from 0.5.0; actual rollout is tracked in WORK_SESSION.md.
 
 ## Dashboard scheduling
 
@@ -41,7 +41,7 @@ A running read may finish after the deadline, even though the server refuses its
 
 Schema 6 adds nullable `jobs.not_before` and `jobs.not_after` fields. Existing schema-5 jobs keep all original values and receive null bounds, preserving immediate delivery. Dashboard and paginated history expose the fields. The migration is transactional and repeatable. Tests also cover a failed schema-6 upgrade rolling back the new column and leaving the original version intact.
 
-Back up before a future deployment. Older binaries cannot open schema 6; rollback requires the pre-upgrade database and matching older image. Do not run unreleased main against the production database to test this migration. The currently pending 0.5.0 rollout still requires its exact schema-5 release source and matching public export.
+Back up before deployment. Older binaries cannot open schema 6; rollback requires the pre-upgrade database and matching older image. Do not run unreleased main against the production database to test this migration. Deploy the exact intended release and publish its matching public export only after the private image is verified.
 
 ## Mock and verification
 

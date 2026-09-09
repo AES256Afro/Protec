@@ -1,8 +1,8 @@
-# Unreleased: pinned signatures for inventory delivery
+# Pinned inventory job signatures (0.6)
 
-Source after 0.5.0 adds optional Ed25519 signatures to protocol-1 inventory delivery. Operators explicitly provision a signing key on the server and a public trust file on each agent. An agent started with `--job-trust` refuses unsigned, altered, expired, wrongly targeted or untrusted deliveries before recording a local attempt or forcing inventory collection. Normal heartbeat inventory is still sent before the delivery response is checked.
+Version 0.6 adds optional Ed25519 signatures to protocol-1 inventory delivery. Operators explicitly provision a signing key on the server and a public trust file on each agent. An agent started with `--job-trust` refuses unsigned, altered, expired, wrongly targeted or untrusted deliveries before recording a local attempt or forcing inventory collection. Normal heartbeat inventory is still sent before the delivery response is checked.
 
-This is an unreleased source feature. The deployed 0.4.0 pilot and the published 0.5.0 release do not include it. It does not enable package changes, configuration writes, network operations or remote shells, and it does not complete M4 or native agent deployment acceptance.
+The 0.4 and 0.5 releases do not include this feature. Actual image publication, managed rollout and native trust verification are tracked in WORK_SESSION.md. It does not enable package changes, configuration writes, network operations or remote shells, and it does not complete M4 or native agent deployment acceptance.
 
 ## Local setup in a disposable environment
 

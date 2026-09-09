@@ -1,5 +1,6 @@
 *
 !Dockerfile
+!VERSION
 !requirements.txt
 !requirements-signing.txt
 !protec/
