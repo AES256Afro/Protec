@@ -58,3 +58,7 @@ Source validation covers queued/running cancellation, both delivery protocols, s
 ## Unreleased: agent receipt recovery
 
 The command-line agent now records protocol-1 inventory attempts in a private SQLite journal beside its state file. A device-scoped receipt lookup allows a restarted agent to reconcile a completion whose HTTP response was lost, without sending another completion. The journal contains validated metadata, not bearer credentials or lease tokens. See [local agent receipts](AGENT_RECEIPTS.md) for file protection, states, capacity, compatibility and verification limits. This addition follows the 0.5.0 tag and does not change the control-plane schema.
+
+## Unreleased: capability admission
+
+Agents can advertise a bounded list of supported job contracts on each heartbeat. The server withholds a new lease when the current report does not include its inventory contract; withheld delivery consumes no attempt. Missing reports retain only the old read-only inventory fallback. Reports never grant operator permissions or enable new job kinds. The new agent also checks delivery against its own report before local job processing. See [job capabilities](JOB_CAPABILITIES.md) for the contract, compatibility and validation limits.

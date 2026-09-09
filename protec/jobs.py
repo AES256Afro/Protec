@@ -5,6 +5,7 @@ import re
 import secrets
 import time
 from protec.identity import require
+from protec.capabilities import SUPPORTED
 
 MAX_ATTEMPTS=3
 LEASE_SECONDS=120
@@ -21,13 +22,15 @@ def protocol(value):
     return value
 
 
-def deliver(db,store,device,version):
+def deliver(db,store,device,version,admitted=SUPPORTED):
     protocol(version)
     now=time.time()
-    exhausted=db.execute("SELECT id FROM jobs WHERE device=? AND status='running' AND lease<=? AND attempt>=?",(device,now,MAX_ATTEMPTS)).fetchall()
+    exhausted=db.execute("SELECT id FROM jobs WHERE device=? AND kind='refresh_inventory' AND status='running' AND lease<=? AND attempt>=?",(device,now,MAX_ATTEMPTS)).fetchall()
     for row in exhausted:
         db.execute("UPDATE jobs SET status='failed',result='Inventory delivery retry limit reached' WHERE id=?",(row['id'],))
         store.audit(db,device,'inventory.delivery_exhausted',row['id'])
+    if ('refresh_inventory',version) not in admitted:
+        return []
     rows=db.execute("SELECT * FROM jobs WHERE device=? AND kind='refresh_inventory' AND attempt<? AND (contract_version=0 OR contract_version=?) AND (status='queued' OR (status='running' AND lease<=?)) ORDER BY created LIMIT 10",(device,MAX_ATTEMPTS,version,now)).fetchall()
     result=[]
     for row in rows:

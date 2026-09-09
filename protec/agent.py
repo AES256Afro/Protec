@@ -14,6 +14,7 @@ from urllib.request import Request, urlopen
 from protec.packages import collect as collect_packages
 from protec.jobs import inventory_digest, validate_envelope, protocol
 from protec.agent_receipts import ReceiptJournal, ReceiptError
+from protec import capabilities
 
 def inventory():
     privileged = os.geteuid()==0 if hasattr(os,'geteuid') else False
@@ -57,19 +58,21 @@ def request(server,path,token,body):
         return json.load(response)
 
 def cycle(state,journal=None):
+    offer=capabilities.inventory_offer()
     fresh = time.monotonic()-state.get('_package_scan',float('-inf'))>=300
     if fresh:
         state['_packages']=collect_packages()
         state['_package_scan']=time.monotonic()
     current=inventory()
     current['packages']=state['_packages']
-    response = request(state['server'],'/api/heartbeat',state['credential'],{'inventory':current,'job_protocol':1})
+    response = request(state['server'],'/api/heartbeat',state['credential'],{'inventory':current,'job_protocol':1,'job_capabilities':offer})
     if not isinstance(response,dict) or not isinstance(response.get('jobs'),list) or len(response['jobs'])>10:
         raise ValueError('Invalid job delivery response')
     negotiated=protocol(response.get('job_protocol',0))
     jobs=[validate_envelope(job,state.get('id')) for job in response['jobs']]
     if any(job.get('version',0)!=negotiated for job in jobs):
         raise ValueError('Delivered job does not match the negotiated protocol')
+    capabilities.validate_delivery(jobs,offer,response.get('capability_admission',capabilities.UNREPORTED))
     if journal is not None:
         if type(response.get('receipt_lookup')) is int and response['receipt_lookup']==1:
             for record in journal.pending():
@@ -80,7 +83,7 @@ def cycle(state,journal=None):
         state['_packages']=collect_packages()
         state['_package_scan']=time.monotonic()
         current['packages']=state['_packages']
-        request(state['server'],'/api/heartbeat',state['credential'],{'inventory':current,'job_protocol':1})
+        request(state['server'],'/api/heartbeat',state['credential'],{'inventory':current,'job_protocol':1,'job_capabilities':offer})
     for job in jobs:
         completion={'job':job['id']}
         if job.get('version')==1:
