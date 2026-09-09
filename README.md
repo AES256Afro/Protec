@@ -36,7 +36,9 @@ Both the control plane and the inventory agent can run on your MacBook. No Linux
 
 Subsequent runs use `python3 -m protec.agent`. Use `--once` for one check-in, and `--state PATH` for an alternative enrollment state file. Revocation keeps historical inventory and audit events. To re-enroll a revoked device, stop the agent, remove its local state file, and enroll using a new token.
 
-The inventory agent runs as the user who starts it and reports whether that user has administrator privileges. Root is not required for this slice. It does not install a service, elevate privileges, enable SSH, or alter the host. POSIX enrollment supports Linux and local macOS inventory testing. macOS inventory uses its product name and version. The privilege field describes the running process: a normal Terminal session reports standard privileges even if your macOS account belongs to the administrators group. Windows enrollment is intentionally blocked until protected credential storage is implemented.
+For the new Linux service installation source checkpoint, see [Linux inventory service](docs/LINUX_AGENT.md). It follows the published 0.6 tag and uses a dedicated unprivileged account.
+
+The foreground inventory agent runs as the user who starts it and reports whether that user has administrator privileges. Root is not required for this slice. It does not install a service, elevate privileges, enable SSH, or alter the host. POSIX enrollment supports Linux and local macOS inventory testing. macOS inventory uses its product name and version. The privilege field describes the running process: a normal Terminal session reports standard privileges even if your macOS account belongs to the administrators group. Windows enrollment is intentionally blocked until protected credential storage is implemented.
 
 The development server binds only to loopback. For a persistent server, use the non-root container with its Gunicorn server and an explicitly configured HTTPS origin. See [deployment instructions](docs/DEPLOYMENT.md) for Docker Compose, BoxPilot, proxy setup, backup, and upgrades. Full enterprise production readiness remains roadmap work.
 
