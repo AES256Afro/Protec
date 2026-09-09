@@ -15,6 +15,9 @@ function notify(message) { $('notice').textContent = message; }
 function cancelJobButton(job) {
   return can('jobs.write') && ['queued','running'].includes(job.status) ? `<button data-cancel-job="${escape(job.id)}">Cancel refresh</button>` : '';
 }
+function jobWindow(job) {
+  return job.not_before == null ? '' : `<p>Window (local time): ${escape(date(job.not_before))} to ${escape(date(job.not_after))}</p>`;
+}
 function jobReceipt(job) {
   const receipt=job.receipt;
   if(!receipt) return `<p>${job.status==='completed'?'Legacy completion; no receipt recorded':['failed','cancelled'].includes(job.status)?'No completion receipt recorded':job.contract_version?'Awaiting completion receipt':job.attempt?'Legacy agent; no completion receipt':'Awaiting agent delivery'}</p>`;
@@ -48,7 +51,7 @@ function render() {
     const connected = !d.revoked && snapshot.time - d.seen < 90;
     return `<tr><td><strong>${escape(inv.hostname)}</strong><small>${escape(d.id)}</small></td><td><span class="badge ${connected?'green':''}">${d.revoked?'Revoked':connected?'Connected':'Offline'}</span></td><td>${escape(inv.os)}<small>${escape(inv.version)} · ${escape(inv.architecture)}</small></td><td>${escape(inv.privilege)}<small>Self-reported</small></td><td>${escape(date(d.seen))}</td><td>${d.revoked?'Access removed':`<button data-packages="${escape(d.id)}">Packages</button>${can('jobs.write')?`<button data-refresh="${escape(d.id)}">Refresh inventory</button>`:''}${can('devices.revoke')?`<button data-revoke="${escape(d.id)}">Revoke</button>`:''}`}</td></tr>`;
   }).join('') || (snapshot.devices.length ? '<tr><td colspan="6">No devices match your search.</td></tr>' : '');
-  $('job-list').innerHTML = snapshot.jobs.map(j => `<div class="event"><div><strong>Inventory refresh</strong><p>${escape(j.device)} · ${escape(j.result || 'Awaiting agent result')}</p><p>Delivery attempts: ${escape(j.attempt ?? 0)} of 3</p>${jobReceipt(j)}${cancelJobButton(j)}</div><div><span class="badge ${j.status==='completed'?'green':''}">${escape(j.status)}</span><p>${escape(date(j.created))}</p></div></div>`).join('') || '<p>No device actions yet. Request an inventory refresh from Devices.</p>';
+  $('job-list').innerHTML = snapshot.jobs.map(j => `<div class="event"><div><strong>Inventory refresh</strong><p>${escape(j.device)} · ${escape(j.result || 'Awaiting agent result')}</p><p>Delivery attempts: ${escape(j.attempt ?? 0)} of 3</p>${jobWindow(j)}${jobReceipt(j)}${cancelJobButton(j)}</div><div><span class="badge ${j.status==='completed'?'green':''}">${escape(j.status)}</span><p>${escape(date(j.created))}</p></div></div>`).join('') || '<p>No device actions yet. Request an inventory refresh from Devices.</p>';
   $('audit-list').innerHTML = snapshot.audit.map(a => `<div class="event"><div><strong>${escape(a.action.replaceAll('.',' '))}</strong><p>${escape(a.actor)} → ${escape(a.target)}</p></div><small>${escape(date(a.time))}</small></div>`).join('') || '<p>No audit events yet. Enroll your first device to begin.</p>';
 }
 async function refresh() {
@@ -135,7 +138,7 @@ async function loadHistory(reset) {
       else if (kind==='jobs') { title=item.kind; detail=`${item.status} · ${item.device} · ${item.result || 'Awaiting result'}`; timestamp=item.created; }
       else if (kind==='enrollments') { title=`Token ${item.id.slice(0,12)}`; detail=item.status; timestamp=item.expires; }
       else { title=item.action; detail=`${item.actor} → ${item.target}`; timestamp=item.time; }
-      return `<div class="event"><div><strong>${escape(title)}</strong><p>${escape(detail)}</p>${kind==='jobs'?jobReceipt(item)+cancelJobButton(item):''}</div><small>${kind==='enrollments'?'Expires ':''}${escape(date(timestamp))}</small></div>`;
+      return `<div class="event"><div><strong>${escape(title)}</strong><p>${escape(detail)}</p>${kind==='jobs'?jobWindow(item)+jobReceipt(item)+cancelJobButton(item):''}</div><small>${kind==='enrollments'?'Expires ':''}${escape(date(timestamp))}</small></div>`;
     }).join('');
     if (reset) $('history-list').innerHTML = entries || '<p>No records.</p>';
     else $('history-list').insertAdjacentHTML('beforeend',entries);
