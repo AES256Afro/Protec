@@ -1,6 +1,6 @@
 # Deploy Protec
 
-Protec 0.3 is a private fleet inventory pilot. Docker Compose is the default installation method for the control plane and dashboard. It can run independently of BoxPilot, which offers an optional catalog installation of the same container image. SQLite data lives under `/data` in persistent storage and survives container replacement.
+Protec is a private fleet inventory pilot. Docker Compose is the default installation method for the control plane and dashboard. It can run independently of BoxPilot, which offers an optional catalog installation of the same container image. SQLite data lives under `/data` in persistent storage and survives container replacement.
 
 Device agents run directly on their Linux or macOS hosts and connect outbound over HTTPS. Endpoint management will use native services and appropriate host permissions as those capabilities ship. Installing the portal container does not grant it administrative access to enrolled devices. The portal does not need root, a Docker socket, or host network access.
 
@@ -9,7 +9,7 @@ Device agents run directly on their Linux or macOS hosts and connect outbound ov
 Install Docker Engine and Compose on your server, then:
 
 ```sh
-git clone https://github.com/AES256Afro/Protec.git
+git clone --branch v0.5.0 https://github.com/AES256Afro/Protec.git
 cd Protec
 cp .env.example .env
 # Set PROTEC_PUBLIC_URL to the exact HTTPS origin used by your browsers and agents.
@@ -17,7 +17,7 @@ docker compose pull
 docker compose up -d --wait
 ```
 
-For a source build, use `docker compose up -d --build --wait` instead. The supplied Compose file binds only to `127.0.0.1:8765`. Configure an HTTPS reverse proxy on that host, or use a private Tailscale address:
+The example pins the published 0.5.0 release; use the release tag you intend to deploy. For a source build of that release, use `docker compose up -d --build --wait` instead. Main can contain unreleased changes, so do not build it under a published release image name. The supplied Compose file binds only to `127.0.0.1:8765`. Configure an HTTPS reverse proxy on that host, or use a private Tailscale address:
 
 ```sh
 sudo tailscale serve --bg --https=8765 http://127.0.0.1:8765
@@ -99,7 +99,7 @@ Cloudflare authentication and access to the domain are required for website publ
 
 ## Current limits
 
-This is not yet a complete Intune replacement. Package installation, patching, policy enforcement, SSH sessions, VPN management, SSO/MFA, signed jobs, and native Windows services remain roadmap work. Use a private network for the management pilot. Inventory and privilege reports come from the enrolled device and are not independent compliance attestation.
+This is not yet a complete Intune replacement. Package installation, patching, policy enforcement, SSH sessions, VPN management, SSO/MFA and native Windows services remain roadmap work. Use a private network for the management pilot. Inventory and privilege reports come from the enrolled device and are not independent compliance attestation.
 
 After publishing, read the running image's `org.opencontainers.image.revision` label and verify the served demo, including its actual JavaScript bytes:
 
@@ -108,3 +108,12 @@ python3 scripts/check_release.py --revision FULL_DEPLOYED_COMMIT
 ```
 
 The ongoing Protec build automation also carries this parity requirement. A docs-only or agent-only commit may be newer than the deployed control-plane release; use the running image revision when checking the public demo.
+
+
+## Disposable Compose acceptance check
+
+Before publishing a new release, run `sh scripts/check_compose.sh` from a checkout on a Docker/Compose host. The check builds a local image, uses a unique Compose project and fresh named volume, removes all port publications, and disables the container's external network. It exercises the real Gunicorn entrypoint and independent file-token bootstrap path. It does not use the managed fleet or a host directory mount. An existing image can be tested with `PROTEC_TEST_IMAGE=IMAGE_REFERENCE sh scripts/check_compose.sh`.
+
+The check verifies enrollment and authorization denials, versioned receipt replay, scheduled-window admission, cancellation, protected files, online backup and a separately staged restore. It restarts the container and verifies identities, pending windows, receipts and audit records survived. The disposable container and volumes are removed on exit. This is container restart and application recovery evidence, not host reboot or native agent-service verification. Never run the internal `container_smoke.py` helper against an existing installation; it is designed only for the fresh volume created by the wrapper.
+
+Image publication runs only for version tags that match VERSION. Manual dispatch from a newer main branch must not overwrite the published version image.
