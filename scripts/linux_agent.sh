@@ -15,7 +15,7 @@ import hashlib,re,sys
 from pathlib import Path
 root=Path(sys.argv[1]).resolve(strict=True)
 if (root/'protec').is_symlink():raise SystemExit('Source package must not be a symlink')
-files=[root/'VERSION',*sorted((root/'protec').glob('*.py'))]
+files=[root/'VERSION',*sorted(p for p in (root/'protec').glob('*.py') if not p.name.startswith('.'))]
 if not (root/'protec'/'agent.py').is_file():raise SystemExit('Missing agent source')
 hash=hashlib.sha256()
 for path in files:
@@ -25,6 +25,20 @@ version=(root/'VERSION').read_text().strip()
 if not re.fullmatch(r'\d+\.\d+\.\d+',version):raise SystemExit('Invalid VERSION')
 print(version+'-'+hash.hexdigest()[:16])
 PY
+}
+receipt_schema() {
+  python3 - <<'PYSCHEMA'
+from pathlib import Path
+import sqlite3,stat
+path=Path('/var/lib/protec-agent/agent.json.receipts/journal.db')
+if not path.exists() and not path.is_symlink():print('absent')
+else:
+ info=path.lstat()
+ if not stat.S_ISREG(info.st_mode) or info.st_nlink!=1:raise SystemExit('Receipt journal must be a regular file')
+ connection=sqlite3.connect(path.absolute().as_uri()+'?mode=ro',uri=True)
+ try:print(connection.execute('PRAGMA user_version').fetchone()[0])
+ finally:connection.close()
+PYSCHEMA
 }
 usage() { printf '%s\n' 'Usage: linux_agent.sh install [SOURCE] | enroll SERVER_ORIGIN | status | uninstall'; }
 [ "${1:-}" != --help ] || { usage; exit 0; }
@@ -90,6 +104,7 @@ import re,sys
 if not re.fullmatch(r'releases/\d+\.\d+\.\d+-[a-f0-9]{16}',sys.argv[1]):raise SystemExit('Unexpected current release link')
 PYVALIDATE
     fi
+    previous_receipt_schema=$(receipt_schema)
     # Persist the manager so removal does not require keeping the original checkout.
     if [ "$(readlink -f "$0")" != "$base/manage.sh" ]; then install -m 0755 "$0" "$base/manage.sh"; fi
     [ ! -f "$unit" ] || cp "$unit" "$base/previous-unit"
@@ -140,6 +155,11 @@ UNIT
     fi
     if [ "$activated" = 0 ]; then
       systemctl stop protec-agent.service || true
+      current_receipt_schema=$(receipt_schema 2>/dev/null) || current_receipt_schema=unavailable
+      if [ "$current_receipt_schema" != "$previous_receipt_schema" ]; then
+        echo 'Agent activation failed and the receipt schema changed. Service is stopped; new code and receipts are retained. Do not roll older code onto this journal. Inspect journalctl and recover using compatible code or a verified backup.' >&2
+        exit 1
+      fi
       if [ -n "$previous" ]; then
         ln -s "$previous" "$base/.current-rollback"
         mv -Tf "$base/.current-rollback" "$base/current"
