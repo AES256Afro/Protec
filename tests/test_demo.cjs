@@ -5,6 +5,7 @@ const vm=require('node:vm');
 function demo(clock=Date){const context=vm.createContext({Date:clock,URLSearchParams,structuredClone,fetch(){throw Error('Demo attempted network access');}});vm.runInContext(fs.readFileSync('website/demo.js','utf8'),context);return context.protecDemo;}
 test('demo lifecycle changes only mock state and reset restores it',async()=>{
  const app=demo();const before=await app.request('dashboard');assert.equal(before.devices.length,3);
+ for(const item of before.devices) assert.equal(item.inventory.packages.status,'complete');
  const device=before.devices[0].id;
  await app.request('jobs',{device});assert.equal((await app.request('dashboard')).jobs[0].status,'completed');
  await app.request('revoke',{device});assert.equal((await app.request('dashboard')).fleet.active,2);
