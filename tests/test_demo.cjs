@@ -90,3 +90,22 @@ test('mock queued and running refreshes can be cancelled once and block late can
  await assert.rejects(()=>app.request('jobs/cancel',{id:completed.id}),/Only queued or running/);
  await assert.rejects(()=>app.request('jobs/cancel',{id:'missing'}),/not found/);
 });
+
+test('mock windows wait, simulate an in-window check-in, and expire missed windows',async()=>{
+ let clock=1000000;const app=demo({now:()=>clock*1000});
+ const device=(await app.request('dashboard')).devices[0].id;
+ const created=await app.request('jobs',{device,window:{start:clock+10,end:clock+40}});
+ let job=(await app.request('dashboard')).jobs.find(j=>j.id===created.id);
+ assert.equal(job.status,'queued');assert.equal(job.attempt,0);assert.equal(job.not_before,1000010);
+ clock+=10;job=(await app.request('dashboard')).jobs.find(j=>j.id===created.id);
+ assert.equal(job.status,'completed');assert.equal(job.receipt.outcome,'succeeded');
+ const missed=await app.request('jobs',{device,window:{start:clock+10,end:clock+20}});
+ clock+=20;job=(await app.request('dashboard')).jobs.find(j=>j.id===missed.id);
+ assert.equal(job.status,'failed');assert.equal(job.attempt,0);assert.equal(job.receipt,null);
+ const history=await app.request('history?kind=jobs');assert.equal(history.items.find(j=>j.id===missed.id).not_after,clock);
+ const before=(await app.request('dashboard')).jobs.length;
+ for(const window of [{start:true,end:clock+30},{start:clock-1,end:clock+30},{start:clock+1,end:clock+90000},{start:clock+1,end:clock+5,extra:1}]) {
+  await assert.rejects(()=>app.request('jobs',{device,window}),/Invalid maintenance window/);
+ }
+ assert.equal((await app.request('dashboard')).jobs.length,before);
+});

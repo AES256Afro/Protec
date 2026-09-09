@@ -9,7 +9,7 @@ from protec.capabilities import SUPPORTED
 
 MAX_ATTEMPTS=3
 LEASE_SECONDS=120
-PROJECTION='id,device,kind,status,created,result,contract_version,attempt,receipt,completed,issued_by'
+PROJECTION='id,device,kind,status,created,result,contract_version,attempt,receipt,completed,issued_by,not_before,not_after'
 
 
 def inventory_digest(inventory):
@@ -25,17 +25,21 @@ def protocol(value):
 def deliver(db,store,device,version,admitted=SUPPORTED):
     protocol(version)
     now=time.time()
+    expired=db.execute("SELECT id FROM jobs WHERE device=? AND kind='refresh_inventory' AND status IN ('queued','running') AND not_after<=?",(device,now)).fetchall()
+    for row in expired:
+        db.execute("UPDATE jobs SET status='failed',result='Maintenance window expired',lease=0,lease_hash=NULL WHERE id=?",(row['id'],))
+        store.audit(db,device,'inventory.window_expired',row['id'])
     exhausted=db.execute("SELECT id FROM jobs WHERE device=? AND kind='refresh_inventory' AND status='running' AND lease<=? AND attempt>=?",(device,now,MAX_ATTEMPTS)).fetchall()
     for row in exhausted:
         db.execute("UPDATE jobs SET status='failed',result='Inventory delivery retry limit reached' WHERE id=?",(row['id'],))
         store.audit(db,device,'inventory.delivery_exhausted',row['id'])
     if ('refresh_inventory',version) not in admitted:
         return []
-    rows=db.execute("SELECT * FROM jobs WHERE device=? AND kind='refresh_inventory' AND attempt<? AND (contract_version=0 OR contract_version=?) AND (status='queued' OR (status='running' AND lease<=?)) ORDER BY created LIMIT 10",(device,MAX_ATTEMPTS,version,now)).fetchall()
+    rows=db.execute("SELECT * FROM jobs WHERE device=? AND kind='refresh_inventory' AND (not_before IS NULL OR not_before<=?) AND (not_after IS NULL OR not_after>?) AND attempt<? AND (contract_version=0 OR contract_version=?) AND (status='queued' OR (status='running' AND lease<=?)) ORDER BY created LIMIT 10",(device,now,now,MAX_ATTEMPTS,version,now)).fetchall()
     result=[]
     for row in rows:
         token=secrets.token_urlsafe(32) if version else None
-        expires=now+LEASE_SECONDS
+        expires=min(now+LEASE_SECONDS,row['not_after']) if row['not_after'] is not None else now+LEASE_SECONDS
         attempt=row['attempt']+1
         db.execute("UPDATE jobs SET status='running',lease=?,contract_version=?,attempt=?,lease_hash=? WHERE id=?",(expires,version,attempt,hashlib.sha256(token.encode()).hexdigest() if token else None,row['id']))
         envelope={'id':row['id'],'kind':row['kind']}

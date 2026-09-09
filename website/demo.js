@@ -5,20 +5,37 @@
   const id=()=>`demo-${++sequence}`;
   const permissions=['inventory.read','jobs.read','health.read','jobs.write','devices.revoke','enrollments.read','enrollments.write','audit.read','credentials.read','credentials.write'];
   const devices=[['demo-linux-01','lab-ubuntu','Linux','Ubuntu 24.04','x86_64',12],['demo-mac-01','studio-mac','macOS','27.0','arm64',25],['demo-linux-02','lab-debian','Linux','Debian 13','x86_64',7200]].map(([id,hostname,os,version,architecture,age])=>({id,seen:now()-age,revoked:0,inventory:{hostname,os,version,architecture,agent_version:'0.2.0',privilege:'standard',packages:{status:'ok',scope:os==='macOS'?'Homebrew formulae':'Debian packages',manager:os==='macOS'?'homebrew':'dpkg',collected_at:now()-age,total:3,truncated:false,message:'Illustrative package versions from mock devices.',items:[{name:'curl',version:'8.14.1'},{name:'git',version:'2.49.0'},{name:'python3',version:'3.13.5'}]}}}));
-  const jobs=[['demo-running-refresh','demo-mac-01','running',1],['demo-queued-refresh','demo-linux-02','queued',0]].map(([id,device,status,attempt])=>({id,device,status,attempt,kind:'refresh_inventory',created:now()-45,result:null,contract_version:attempt?1:0,receipt:null,completed:null,issued_by:'demo-administrator'}));
+  const jobs=[['demo-running-refresh','demo-mac-01','running',1],['demo-queued-refresh','demo-linux-02','queued',0]].map(([id,device,status,attempt])=>({id,device,status,attempt,kind:'refresh_inventory',created:now()-45,result:null,contract_version:attempt?1:0,receipt:null,completed:null,issued_by:'demo-administrator',not_before:status==='queued'?Math.ceil(now()+3600):null,not_after:status==='queued'?Math.ceil(now()+7200):null}));
   const audit=[{id:1,time:now()-60,actor:'demo-administrator',action:'demo.started',target:'Mock fleet'}];
   const enrollments=[];
   const credentials=[];
   const record=(action,target)=>audit.unshift({id:++sequence,time:now(),actor:'demo-administrator',action,target});
   const status=(items)=>items.map(item=>({...item,status:item.status==='revoked'?'revoked':item.expires<=now()?'expired':item.rotation_deadline!=null?(item.rotation_deadline>now()?'rotating':'rotated'):item.status}));
+  const finishJob=(job)=>{
+    job.status='completed';job.result='Simulated inventory received';job.contract_version=1;job.attempt=1;job.completed=now();
+    job.receipt={version:1,job:job.id,device:job.device,kind:'refresh_inventory',attempt:1,outcome:'succeeded',inventory_sha256:'d'.repeat(64),recorded_at:now()};
+    const device=devices.find(d=>d.id===job.device);device.seen=now();device.inventory.packages.collected_at=now();record('inventory.completed',job.device);
+  };
+  const advanceWindows=()=>{
+    for(const job of jobs.filter(j=>j.status==='queued'&&j.not_before!=null&&j.not_before<=now())) {
+      if(job.not_after<=now()){job.status='failed';job.result='Maintenance window expired';record('inventory.window_expired',job.id);}
+      else finishJob(job);
+    }
+  };
+  const windowBounds=(value)=>{
+    if(value==null)return [null,null];
+    if(typeof value!=='object'||Array.isArray(value)||Object.keys(value).sort().join(',')!=='end,start'||!Number.isInteger(value.start)||!Number.isInteger(value.end)||value.start<now()||value.end<=value.start||value.end>now()+30*86400||value.end-value.start>86400)throw Error('Invalid maintenance window');
+    return [value.start,value.end];
+  };
   globalThis.protecDemo={async request(path,body){
     const [route,query='']=path.split('?');
+    advanceWindows();
     let result;
     if(body===undefined) {
       if(route==='dashboard') result={devices,jobs,audit,time:now(),pending:jobs.filter(job=>['queued','running'].includes(job.status)).length,fleet:{records:devices.length,active:devices.filter(d=>!d.revoked).length,online:devices.filter(d=>!d.revoked && now()-d.seen<90).length},identity:{id:'demo-administrator',name:'Demo administrator',role:'administrator',device_ids:null,permissions}};
       else if(route==='enrollments') result={enrollments:status(enrollments)};
       else if(route==='credentials') result={credentials:status(credentials),next_cursor:null};
-      else if(route==='health') result={status:'simulated',database:'mock data in this tab',schema_version:5,uptime_seconds:0,counts:{devices:devices.length,jobs:jobs.length,enrollments:enrollments.length,audit:audit.length}};
+      else if(route==='health') result={status:'simulated',database:'mock data in this tab',schema_version:6,uptime_seconds:0,counts:{devices:devices.length,jobs:jobs.length,enrollments:enrollments.length,audit:audit.length}};
       else if(route==='history') { const kind=new URLSearchParams(query).get('kind'); const items={devices,jobs,audit,enrollments:status(enrollments)}[kind]; if(!items) throw Error('Unknown history collection'); result={items,next_cursor:null,kind}; }
     } else if(route==='enrollments') {const item={id:id(),expires:now()+900,status:'active'};enrollments.unshift(item);record('enrollment.created',item.id);result={token:'DEMO_ONLY_NOT_A_REAL_ENROLLMENT_TOKEN',expires_in:900};}
     else if(route==='enrollments/revoke') {const list=route.startsWith('enrollments')?enrollments:credentials;const item=list.find(i=>i.id===body.id && i.status==='active');if(!item) throw Error('Active mock credential not found');item.status='revoked';record(route.startsWith('enrollments')?'enrollment.revoked':'credential.revoked',item.id);result={ok:true};}
@@ -61,7 +78,19 @@
         result={ok:true,id:job.id,status:'cancelled',duplicate:false};
       }
     }
-    else if(route==='jobs'||route==='revoke') {const device=devices.find(d=>d.id===body.device&&!d.revoked);if(!device) throw Error('Active mock device not found');if(route==='revoke'){device.revoked=1;for(const job of jobs.filter(job=>job.device===device.id&&['queued','running'].includes(job.status)))job.status='cancelled';record('device.revoked',device.id);}else{if(jobs.some(job=>job.device===device.id&&['queued','running'].includes(job.status)))throw Error('An inventory refresh is already pending');device.seen=now();device.inventory.packages.collected_at=now();const jobId=id();jobs.unshift({id:jobId,device:device.id,kind:'refresh_inventory',status:'completed',created:now(),result:'Simulated inventory received',contract_version:1,attempt:1,completed:now(),issued_by:'demo-administrator',receipt:{version:1,job:jobId,device:device.id,kind:'refresh_inventory',attempt:1,outcome:'succeeded',inventory_sha256:'d'.repeat(64),recorded_at:now()}});record('inventory.completed',device.id);}result={ok:true};}
+    else if(route==='jobs'||route==='revoke') {
+      const device=devices.find(d=>d.id===body.device&&!d.revoked);if(!device)throw Error('Active mock device not found');
+      if(route==='revoke') {
+        device.revoked=1;for(const job of jobs.filter(j=>j.device===device.id&&['queued','running'].includes(j.status)))job.status='cancelled';record('device.revoked',device.id);result={ok:true};
+      } else {
+        const [not_before,not_after]=windowBounds(body.window);
+        if(jobs.some(j=>j.device===device.id&&['queued','running'].includes(j.status)))throw Error('An inventory refresh is already pending');
+        const job={id:id(),device:device.id,kind:'refresh_inventory',status:'queued',created:now(),result:null,contract_version:0,attempt:0,completed:null,issued_by:'demo-administrator',receipt:null,not_before,not_after};
+        jobs.unshift(job);record('inventory.requested',device.id);
+        if(not_before==null)finishJob(job);
+        result={id:job.id};
+      }
+    }
     if(!result) throw Error('This operation is not available in the demo');
     return structuredClone(result);
   }};

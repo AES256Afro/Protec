@@ -13,7 +13,7 @@ from urllib.parse import urlsplit, parse_qs
 from protec.migrations import migrate
 from protec.history import page, health
 from protec.packages import validate_report
-from protec import identity, capabilities, jobs as job_contracts
+from protec import identity, capabilities, job_windows, jobs as job_contracts
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -82,7 +82,8 @@ class Store:
             delivered=job_contracts.deliver(db,self,device,job_protocol,admitted)
             proofs={job['id']:self.job_signer.sign(job) for job in delivered if job.get('version')==1} if self.job_signer else None
         return {'jobs':delivered,'job_protocol':job_protocol,'receipt_lookup':1,'capability_admission':1,**({'job_signatures':proofs} if proofs is not None else {})}
-    def queue(self, device, actor='administrator'):
+    def queue(self, device, actor='administrator', window=None):
+        not_before,not_after=job_windows.validate(window)
         job = secrets.token_hex(12)
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
@@ -90,7 +91,7 @@ class Store:
                 raise ValueError('Active device not found')
             if db.execute("SELECT id FROM jobs WHERE device=? AND status IN ('queued','running')",(device,)).fetchone():
                 raise ValueError('An inventory refresh is already pending')
-            db.execute('INSERT INTO jobs(id,device,kind,status,created,lease,result,issued_by) VALUES (?,?,?,?,?,?,?,?)',(job,device,'refresh_inventory','queued',time.time(),0,None,actor))
+            db.execute('INSERT INTO jobs(id,device,kind,status,created,lease,result,issued_by,not_before,not_after) VALUES (?,?,?,?,?,?,?,?,?,?)',(job,device,'refresh_inventory','queued',time.time(),0,None,actor,not_before,not_after))
             self.audit(db,actor,'inventory.requested',device)
         return {'id':job}
     def complete(self, device, job, body=None):
@@ -235,7 +236,7 @@ class Handler(BaseHTTPRequestHandler):
                 elif path=='/api/enrollments/revoke':
                     result = store.revoke_enrollment(str(body.get('id','')),actor)
                 elif path=='/api/jobs':
-                    result = store.queue(str(body.get('device','')),actor)
+                    result = store.queue(str(body.get('device','')),actor,body.get('window'))
                 elif path=='/api/jobs/cancel':
                     result = job_contracts.cancel(store,str(body.get('id','')),principal)
                 elif path=='/api/revoke':

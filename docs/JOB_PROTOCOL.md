@@ -66,3 +66,7 @@ Agents can advertise a bounded list of supported job contracts on each heartbeat
 ## Unreleased: pinned delivery signatures
 
 An optional protected server key signs each protocol-1 inventory envelope within the lease transaction. An agent explicitly configured with a protected public trust file verifies the full envelope and server origin before local job processing and refuses unsigned delivery. Old unsigned inventory agents remain compatible. This does not sign completion receipts or enable privileged operations. See [signed job setup and trust lifecycle](JOB_SIGNATURES.md) for configuration, canonical bytes, validation and outstanding rollout gates.
+
+## Unreleased: maintenance windows
+
+Inventory requests can include a one-shot UTC delivery window. Early polls consume no attempt, leases are capped at the window end, and missed windows expire with a transactional audit event on the next device heartbeat. Dashboard/history show the window; creation is currently API-only. This adds schema 6 after the published 0.5.0 release. See [inventory maintenance windows](JOB_WINDOWS.md) for boundary behavior, mock simulation, migration and rollout limits.

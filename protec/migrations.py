@@ -1,5 +1,5 @@
 """Transactional, forward-only schema upgrades with explicit compatibility checks."""
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 TABLES = {
     'enrollments': 'hash TEXT PRIMARY KEY, expires REAL, used INTEGER DEFAULT 0',
     'devices': 'id TEXT PRIMARY KEY, hash TEXT UNIQUE, inventory TEXT, seen REAL, revoked INTEGER DEFAULT 0',
@@ -28,6 +28,8 @@ def validate_schema(connection):
     required_tables = {**COLUMNS, **({'credentials':CREDENTIAL_COLUMNS | ({'device_ids'} if current>=3 else set()) | ({'replacement_id','rotation_deadline'} if current>=4 else set())} if current>=2 else {})}
     if current>=5:
         required_tables['jobs']=COLUMNS['jobs'] | {'contract_version','attempt','lease_hash','receipt','completed','issued_by'}
+    if current>=6:
+        required_tables['jobs'] |= {'not_before','not_after'}
     if not required_tables.keys() <= tables:
         raise ValueError('Source is not a complete Protec database')
     for table, required in required_tables.items():
@@ -68,4 +70,8 @@ def migrate(connection):
         for definition in ('contract_version INTEGER NOT NULL DEFAULT 0','attempt INTEGER NOT NULL DEFAULT 0','lease_hash TEXT','receipt TEXT','completed REAL','issued_by TEXT'):
             connection.execute('ALTER TABLE jobs ADD COLUMN '+definition)
         connection.execute('PRAGMA user_version=5')
+    if current<6:
+        connection.execute('ALTER TABLE jobs ADD COLUMN not_before REAL')
+        connection.execute('ALTER TABLE jobs ADD COLUMN not_after REAL')
+        connection.execute('PRAGMA user_version=6')
     validate_schema(connection)

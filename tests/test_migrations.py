@@ -81,7 +81,33 @@ class MigrationTests(unittest.TestCase):
         with upgraded.connect() as db:
             row=db.execute('SELECT status,lease,contract_version,attempt,receipt,lease_hash FROM jobs').fetchone()
             self.assertEqual(tuple(row),('running',9999999999,0,0,None,None))
-            self.assertEqual(migrations.validate_schema(db),5)
+            self.assertEqual(migrations.validate_schema(db),SCHEMA_VERSION)
+
+    def test_schema_five_upgrade_preserves_jobs_and_defaults_to_immediate_delivery(self):
+        store=Store(self.path)
+        device=store.enroll(store.enrollment()['token'],inventory());store.queue(device['id'])
+        with store.connect() as db:
+            db.execute('ALTER TABLE jobs DROP COLUMN not_before');db.execute('ALTER TABLE jobs DROP COLUMN not_after')
+            db.execute('PRAGMA user_version=5')
+            before=[tuple(row) for row in db.execute('SELECT * FROM jobs')]
+        for _ in range(2):
+            store=Store(self.path)
+            with store.connect() as db:
+                rows=list(db.execute('SELECT * FROM jobs'))
+                self.assertEqual([tuple(row)[:-2] for row in rows],before)
+                self.assertEqual(tuple(rows[0])[-2:],(None,None))
+                self.assertEqual(validate_schema(db),SCHEMA_VERSION)
+        self.assertEqual(len(store.heartbeat(device['id'],inventory(),1)['jobs']),1)
+
+    def test_failed_schema_six_upgrade_rolls_back_new_column(self):
+        store=Store(self.path)
+        with store.connect() as db:
+            db.execute('ALTER TABLE jobs DROP COLUMN not_before')
+            db.execute('PRAGMA user_version=5')
+        with self.assertRaises(sqlite3.OperationalError):Store(self.path)
+        with store.connect() as db:
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],5)
+            self.assertNotIn('not_before',{row[1] for row in db.execute('PRAGMA table_info(jobs)')})
 
     def test_future_database_refused_without_creating_tables(self):
         connection = sqlite3.connect(self.path)
