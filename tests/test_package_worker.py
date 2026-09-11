@@ -71,3 +71,45 @@ class WorkerTests(unittest.TestCase):
     def test_nonroot_is_rejected_before_loading_any_input(self):
         with patch('protec.package_worker.os.geteuid',return_value=1000),patch('protec.package_worker.protected_document') as read,self.assertRaises(ValueError):execute(self.directory)
         read.assert_not_called()
+
+
+class RecoveryTests(unittest.TestCase):
+    def test_recovery_reads_durable_result_without_execution_inputs(self):
+        from test_package_changes import ChangeCoreTests
+        from protec.package_worker import recover
+        case=ChangeCoreTests();case.setUp();self.addCleanup(case.doCleanups)
+        result=case.execute()
+        directory=case.journal.directory.parent
+        config=directory/'worker.json'
+        config.write_text(json.dumps({'version':1,'server':case.origin,'device':case.device}));config.chmod(0o600)
+        case.journal.directory.rename(directory/'receipts')
+        with patch('protec.package_worker.identity',return_value=(directory,case.origin,case.device)),patch('protec.package_worker.run_change') as run,patch('protec.package_worker.load_policy') as policy:
+            record=recover(case.job['id'],directory)
+        self.assertEqual(record['result'],result)
+        self.assertEqual(record['state'],'completion_pending')
+        self.assertFalse(record['requires_inspection'])
+        run.assert_not_called();policy.assert_not_called()
+
+    def test_started_attempt_is_reported_for_inspection_without_retry(self):
+        from test_package_changes import ChangeCoreTests
+        from protec.package_worker import recover
+        case=ChangeCoreTests();case.setUp();self.addCleanup(case.doCleanups)
+        case.journal.begin(case.job)
+        directory=case.journal.directory.parent
+        case.journal.directory.rename(directory/'receipts')
+        with patch('protec.package_worker.identity',return_value=(directory,case.origin,case.device)):
+            record=recover(case.job['id'],directory)
+        self.assertEqual(record['state'],'started');self.assertIsNone(record['result']);self.assertTrue(record['requires_inspection'])
+        self.assertEqual(case.commits,0)
+
+    def test_missing_journal_does_not_create_one(self):
+        from protec.package_worker import recover
+        with tempfile.TemporaryDirectory() as temporary:
+            directory=Path(temporary)
+            with patch('protec.package_worker.identity',return_value=(directory,'https://fixture.invalid','a'*24)),self.assertRaises(ValueError):recover('b'*24,directory)
+            self.assertFalse((directory/'receipts').exists())
+
+    def test_invalid_identifier_refused_before_reading_identity(self):
+        from protec.package_worker import recover
+        with patch('protec.package_worker.identity') as identity,self.assertRaises(ValueError):recover('../request.json')
+        identity.assert_not_called()

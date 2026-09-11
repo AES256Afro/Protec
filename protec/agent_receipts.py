@@ -162,15 +162,21 @@ class ReceiptJournal:
                 raise ReceiptError('Local package attempt was not started')
             db.execute('INSERT INTO mutation_results VALUES (?,?,?)',(job['id'],job['attempt'],json.dumps(result,sort_keys=True)))
 
-    def mutation_result(self,job,attempt=1):
+    def mutation_record(self,job,attempt=1):
         from protec.package_changes import validate_result
         from protec.jobs import inventory_digest
         with self.connect() as db:
-            row=db.execute('SELECT r.result,a.result_sha256 FROM mutation_results r JOIN attempts a ON a.job=r.job AND a.attempt=r.attempt WHERE r.job=? AND r.attempt=?',(job,attempt)).fetchone()
+            row=db.execute("SELECT a.state,r.result,a.result_sha256 FROM attempts a LEFT JOIN mutation_results r ON a.job=r.job AND a.attempt=r.attempt WHERE a.job=? AND a.attempt=? AND a.kind='apply_packages'",(job,attempt)).fetchone()
         if row is None:return None
-        result=validate_result(json.loads(row['result']))
-        if inventory_digest(result)!=row['result_sha256']:raise ReceiptError('Stored package result digest does not match')
-        return result
+        result=None
+        if row['result'] is not None:
+            result=validate_result(json.loads(row['result']))
+            if inventory_digest(result)!=row['result_sha256']:raise ReceiptError('Stored package result digest does not match')
+        return {'job':job,'state':row['state'],'result':result,'requires_inspection':result is None or result['outcome']=='uncertain'}
+
+    def mutation_result(self,job,attempt=1):
+        record=self.mutation_record(job,attempt)
+        return None if record is None else record['result']
 
     def acknowledge(self,job,receipt):
         validate_receipt(receipt,self.device,job['id'])

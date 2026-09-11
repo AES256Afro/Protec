@@ -1,6 +1,7 @@
 """Root-only single-request package worker. Remote submission remains disabled."""
 import argparse
 import fcntl
+import json
 import os
 from pathlib import Path
 import re
@@ -12,7 +13,7 @@ from protec.package_changes import load_policy,run_change
 DEFAULT_DIRECTORY=Path('/var/lib/protec-package-worker')
 
 
-def execute(directory=DEFAULT_DIRECTORY):
+def identity(directory):
     if os.geteuid()!=0:raise ValueError('Package worker requires root')
     directory=Path(directory)
     # Every input is a protected local document. Jobs cannot choose policy,
@@ -23,6 +24,24 @@ def execute(directory=DEFAULT_DIRECTORY):
             not isinstance(config['device'],str) or not re.fullmatch('[0-9a-f]{24}',config['device'])):
         raise ValueError('Invalid local worker identity')
     server=origin(config['server'])
+    return directory,server,config['device']
+
+
+def recover(identifier,directory=DEFAULT_DIRECTORY):
+    if not isinstance(identifier,str) or not re.fullmatch('[0-9a-f]{24}',identifier):
+        raise ValueError('Use an exact package job identifier')
+    directory,server,device=identity(directory)
+    # Recovery does not read a request, load execution policy or invoke APT.
+    if not (directory/'receipts/journal.db').is_file():
+        raise ValueError('No local worker receipt journal exists')
+    journal=ReceiptJournal(directory/'receipts',server,device)
+    record=journal.mutation_record(identifier)
+    if record is None:raise ValueError('No local package attempt matches this identifier')
+    return record
+
+
+def execute(directory=DEFAULT_DIRECTORY):
+    directory,server,device=identity(directory)
     trust=Trust.load(directory/'job-trust.json',server)
     policy=load_policy(directory/'package-policy.json')
     # Lock the already-protected config inode without changing it. Provisioning
@@ -33,8 +52,8 @@ def execute(directory=DEFAULT_DIRECTORY):
         request=protected_document(directory/'request.json')
         if not isinstance(request,dict) or set(request)!={'job','proof'}:
             raise ValueError('Invalid local worker request')
-        journal=ReceiptJournal(directory/'receipts',server,config['device'])
-        return run_change(request['job'],request['proof'],config['device'],trust,policy,journal)
+        journal=ReceiptJournal(directory/'receipts',server,device)
+        return run_change(request['job'],request['proof'],device,trust,policy,journal)
     finally:
         os.close(descriptor)
 
@@ -42,8 +61,12 @@ def execute(directory=DEFAULT_DIRECTORY):
 def main():
     parser=argparse.ArgumentParser(description='Run one locally provisioned signed package request')
     parser.add_argument('--directory',type=Path,default=DEFAULT_DIRECTORY)
+    parser.add_argument('--result',metavar='JOB_ID',help='Read a retained result without executing or retrying a request')
     args=parser.parse_args()
     try:
+        if args.result is not None:
+            print(json.dumps(recover(args.result,args.directory),sort_keys=True))
+            return 0
         result=execute(args.directory)
     except (ValueError,OSError,RuntimeError):
         print('Package worker refused or interrupted; inspect the protected local journal.',file=sys.stderr)
