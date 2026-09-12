@@ -8,7 +8,7 @@ import tempfile
 import time
 
 
-def exercise(device,name):
+def exercise(device,name,with_worker=False):
     if os.geteuid()!=0 or name!='protec-preview-fixture' or not Path('/opt/protec-lab/disposable-marker').is_file():
         raise RuntimeError('Signed mutation smoke requires the marked guest and inert fixture')
     from protec.apt_preview import preview
@@ -38,7 +38,11 @@ def exercise(device,name):
             job={'id':secrets.token_hex(12),'kind':'apply_packages','version':1,'device':device,'payload':{'plan':plan,'approval':approval},'created':time.time(),'attempt':1,'lease':{'token':secrets.token_urlsafe(32),'expires':min(time.time()+120,plan['expires'])}}
             return job,signer.sign(job)
         job,proof=job_for({'action':'install','packages':[{'name':name,'version':'2.0'}]})
-        result=run_change(job,proof,device,trust,policy,journal)
+        if with_worker:
+            from scripts.signed_worker_smoke import execute_fixture
+            result=execute_fixture(temporary,job,proof,origin,device)
+        else:
+            result=run_change(job,proof,device,trust,policy,journal)
         assert result['outcome']=='succeeded' and result['observed']==[{'name':name,'version':'2.0'}],result
         try:run_change(job,proof,device,trust,policy,journal)
         except ReceiptError:pass
@@ -72,4 +76,4 @@ run_change(p['job'],p['proof'],p['device'],Trust.load(Path(p['keys'])/'job-trust
         try:run_change(interrupted,proof,device,trust,policy,journal)
         except ReceiptError:pass
         else:raise AssertionError('Interrupted mutation was automatically executed again')
-    return {'signed_upgrade_verified':True,'signed_remove_verified':True,'signed_install_verified':True,'replay_refused':True,'crash_after_change_retained':True,'interrupted_retry_refused':True,'full_result_recovered':True}
+    return {'signed_worker_service':with_worker,'signed_upgrade_verified':True,'signed_remove_verified':True,'signed_install_verified':True,'replay_refused':True,'crash_after_change_retained':True,'interrupted_retry_refused':True,'full_result_recovered':True}

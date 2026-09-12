@@ -19,7 +19,7 @@ def run(*args):
     return subprocess.run(args,check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=60).stdout
 
 
-def main(with_changes=False):
+def main(with_changes=False,with_worker=False):
     if os.geteuid()!=0 or not Path('/opt/protec-lab/disposable-marker').is_file():
         raise RuntimeError('Run only as root inside the marked disposable Protec guest')
     name='protec-preview-fixture'
@@ -98,7 +98,7 @@ def main(with_changes=False):
         mutation_results={}
         if with_changes:
             from scripts.package_change_smoke import exercise
-            mutation_results=exercise(device,name)
+            mutation_results=exercise(device,name,with_worker)
         print(json.dumps({**mutation_results,'competing_lock_denied':True,'artifact_change_denied':True,'locked_revalidation':True,'remote_roundtrip':True,'local_receipt':True,'native_apt' :upgrade['apt_version'],'install_preview':True,'upgrade_preview':True,'remove_preview':True,'noop_preview':True,'unchanged_by_previews':True}))
     finally:
         if installed:run('/usr/bin/dpkg','--purge',name)
@@ -113,4 +113,6 @@ if __name__=='__main__':
     import argparse
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--with-changes',action='store_true',help='Also exercise signed changes to the inert fixture in this disposable guest')
-    main(parser.parse_args().with_changes)
+    parser.add_argument('--with-worker',action='store_true',help='Execute the inert upgrade through the signed systemd worker')
+    args=parser.parse_args()
+    main(args.with_changes or args.with_worker,args.with_worker)

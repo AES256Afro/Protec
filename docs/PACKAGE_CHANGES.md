@@ -39,3 +39,10 @@ The request contains a short-lived lease and is separate from the secret-free re
 Run `python -m protec.package_worker --result JOB_ID` as root using the provisioned worker directory, or supply its local path with `--directory`. The command returns the local attempt state, retained result and whether the outcome requires inspection. It does not read `request.json`, load package execution policy, invoke APT, acknowledge a result or retry an operation. The protected worker identity and journal must match. The identifier must be the exact 24-character hexadecimal job ID.
 
 A started attempt with no result returns `result: null` and `requires_inspection: true`. An uncertain retained outcome also requires inspection. A completed local result may still have state `completion_pending`; this does not establish server acknowledgement. State and result are read together from one database query, and retained results must match their recorded digest. Unknown IDs and missing journals are rejected. This interface supports the future transport recovery path; it does not resolve uncertainty or authorize subsequent package changes.
+
+
+## Signed service acceptance
+
+In the marked disposable guest, `scripts/apt_preview_smoke.py --with-worker` uses the existing inert package repository and executes its 1.0-to-2.0 upgrade through the actual Python worker under the supplied systemd template. The fixture provisions protected identity, request, trust and policy documents, reads the retained result through the worker CLI, then starts the same service again. The second activation must fail without changing the stored result or installed version. The fixture removes its transient service and request file afterward.
+
+This uses a dedicated test signer and fictional approval identity. It tests local service execution and result recovery, not authenticated portal approval or remote submission. Existing direct-core removal, install and interrupted-attempt checks run afterward. The production request submission/removal lifecycle, server result transport and operator resolution remain open.
