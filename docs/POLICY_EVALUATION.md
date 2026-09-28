@@ -1,6 +1,6 @@
 # Groups and package-presence policies
 
-The source after 0.6 adds static device groups, immutable group and policy revisions, and read-only package-presence evaluation in the dashboard and API. The Policies view creates and edits groups, assigns a policy to one group, disables a policy through a new revision, and displays explained results. It does not queue jobs or install packages. This is unreleased source; inspect WORK_SESSION.md for actual deployment.
+Version 0.7 adds static device groups, immutable group and policy revisions, and read-only package-presence evaluation in the dashboard and API. The Policies view creates and edits groups, assigns a policy to one group, disables a policy through a new revision, and displays explained results. It does not queue jobs or install packages. Inspect WORK_SESSION.md for actual deployment.
 
 A rule contains exactly `kind: package_present`, `manager: dpkg` or `homebrew`, an exact package name, and `max_age_seconds` from 60 to 86400. A policy with a package version constraint is not supported by this contract. Package names are exact identities; `git-lfs` does not satisfy `git`, and architecture-qualified dpkg names need their exact reported identity.
 

@@ -2,7 +2,7 @@
 
 A Linux-first endpoint management project, with Windows and macOS planned next. The goal is a dashboard for enrollment, security posture, logs, configurations, patches, and audited remote access.
 
-**The 0.6 release is a self-hosted inventory pilot.** It supports independent Docker Compose deployment, an optional BoxPilot catalog install, enrollment, package inventory, and role-based credentials with optional device scopes. It does not yet enforce security policies, collect system logs, install patches, deploy configurations, or open remote sessions.
+**The 0.7 release is a self-hosted inventory pilot.** It supports independent Docker Compose deployment, an optional BoxPilot catalog install, enrollment, package inventory, static device groups with read-only package-presence compliance, read-only APT change previews, and role-based credentials with optional device scopes. It does not yet enforce security policies, collect system logs, install patches, deploy configurations, or open remote sessions.
 
 Website: [foragefournuts.com](https://foragefournuts.com) · [Interactive mock demo](https://foragefournuts.com/demo/) · [Independent and BoxPilot deployment](docs/DEPLOYMENT.md)
 
@@ -36,7 +36,7 @@ Both the control plane and the inventory agent can run on your MacBook. No Linux
 
 Subsequent runs use `python3 -m protec.agent`. Use `--once` for one check-in, and `--state PATH` for an alternative enrollment state file. Revocation keeps historical inventory and audit events. To re-enroll a revoked device, stop the agent, remove its local state file, and enroll using a new token.
 
-For the new Linux service installation source checkpoint, see [Linux inventory service](docs/LINUX_AGENT.md). It follows the published 0.6 tag and uses a dedicated unprivileged account.
+For the Linux service installation, see [Linux inventory service](docs/LINUX_AGENT.md). It is included from the 0.7 release and uses a dedicated unprivileged account.
 
 The foreground inventory agent runs as the user who starts it and reports whether that user has administrator privileges. Root is not required for this slice. It does not install a service, elevate privileges, enable SSH, or alter the host. POSIX enrollment supports Linux and local macOS inventory testing. macOS inventory uses its product name and version. The privilege field describes the running process: a normal Terminal session reports standard privileges even if your macOS account belongs to the administrators group. Windows enrollment is intentionally blocked until protected credential storage is implemented.
 
