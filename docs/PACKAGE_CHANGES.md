@@ -1,6 +1,6 @@
 # Signed package mutation core
 
-The source now contains a constrained local execution core in `protec.package_changes`. Native install, upgrade, removal and crash/replay tests passed in the disposable Ubuntu guest. It is **not registered for remote delivery**, the agent does not advertise it, and the portal has no installation/approval action yet. The normal package workflow remains read-only previews.
+Version 0.7 contains a constrained local execution core in `protec.package_changes`. Native install, upgrade, removal and crash/replay tests passed in the disposable Ubuntu guest. It is **not registered for remote delivery**, the agent does not advertise it, and the portal has no installation/approval action yet. The normal package workflow remains read-only previews.
 
 An execution attempt requires an artifact-bound version-2 plan, approval metadata binding that exact plan digest and expiry, a protocol-1 signed `apply_packages` envelope for the same device, pinned signing trust, a local endpoint package policy, root privileges and a journal bound to the same device and control-plane origin. Only attempt 1 is valid. The signed approval field describes an attested approver identity; the owner-authenticated server workflow that issues it is still an integration gate. Native tests use a dedicated fixture signing key and fictional administrator identity, not a real user's approval.
 
