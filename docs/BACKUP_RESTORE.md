@@ -3,7 +3,7 @@
 Create a consistent snapshot while the local control plane is running:
 
 ```sh
-cd /Users/chris/Projects/Protec
+cd ~/Projects/Protec
 python3 -m protec.database backup --source .protec/protec.db --destination .protec/backup-001.db
 ```
 

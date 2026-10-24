@@ -14,7 +14,7 @@ Not yet validated: a persistent Linux service, a separate remote Linux device, p
 
 ## MacBook setup and folder migration follow-up
 
-- Project moved to `/Users/chris/Projects/Protec`; all 65 existing files verified by content hashes, including Git history and local state.
+- Project moved to `~/Projects/Protec`; all 65 existing files verified by content hashes, including Git history and local state.
 - MacBook enrolled into the local control plane; a real inventory refresh completed and the foreground agent continued check-ins.
 - macOS inventory now reports the product name and version. This remains inventory support, not full macOS management.
 - Browser reproduction with Unicode masked dots now shows actionable token-copy guidance instead of the fetch header exception.

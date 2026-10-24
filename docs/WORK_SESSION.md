@@ -1,7 +1,7 @@
 # Platform build until complete
 
 - Authorization: continue until the requested platform roadmap is complete. User removed the time cutoff on 2026-09-08 at 16:43 UTC.
-- Project: `/Users/chris/Projects/Protec`; remote: `AES256Afro/Protec`; branch: `main`.
+- Project: `~/Projects/Protec`; remote: `AES256Afro/Protec`; branch: `main`.
 - Continuation automation: `protec-four-hour-platform-build`, every 10 minutes without a time cutoff. Do not duplicate it.
 - Local device: MacBook, already enrolled. Existing foreground control plane listens on 127.0.0.1:8765 and agent uses `.protec/agent.json`.
 - Source of milestone scope/dependencies: `docs/ROADMAP.md`.
