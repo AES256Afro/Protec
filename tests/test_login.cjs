@@ -24,7 +24,7 @@ function page(value) {
 }
 
 test('masked Unicode and file paths never reach fetch',async () => {
-  for (const value of ['•'.repeat(43), '/Users/chris/Projects/Protec/.protec/admin-token', 'abc\r\nHeader: injected']) {
+  for (const value of ['•'.repeat(43), '/home/example/protec/.protec/admin-token', 'abc\r\nHeader: injected']) {
     const fixture = page(value);
     await fixture.submit();
     assert.equal(fixture.calls(),0);
